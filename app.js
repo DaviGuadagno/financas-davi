@@ -115,7 +115,7 @@ function fireStore(fs,uid){const base=`users/${uid}`,col=k=>F_.collection(fs,bas
   del(k,id){return F_.deleteDoc(F_.doc(col(k),id))},
   cfg(data){return F_.setDoc(F_.doc(fs,base,'config','geral'),data)},
   stop(){unsub.forEach(f=>f())}}}
-function onDbError(e){console.warn(e);toast(e?.code==='permission-denied'?'Esta conta não tem acesso a estes dados.':'Não consegui acessar seus dados agora. Atualize a página.')}
+function onDbError(e){console.warn(e);if(e?.code==='permission-denied'&&!retried){retried=true;setTimeout(resubscribe,800);return}S.dbErr=e?.code||'erro';S.unreach=true;render(false)}
 async function write(fn,ok){try{const w=Promise.resolve(fn());if(navigator.onLine)await w;else w.catch(e=>console.warn(e));if(ok)toast(ok)}catch(e){console.warn(e);toast('Não salvou. Confira a conexão e tente de novo.')}}
 const clean=o=>JSON.parse(JSON.stringify(o));
 
@@ -350,7 +350,7 @@ function topbar(){const at=attention().length,dn=new Date().toLocaleDateString('
    <button class="bell" data-go="painel" aria-label="${at} pendências">${ic('bell')}${at?`<span class="badge">${at}</span>`:''}</button>
    <button class="btn pri newbtn" data-act="new-tx">${ic('plus')}Novo</button><div class="avatar" aria-hidden="true">DG</div><button class="iconbtn mobout" data-act="look" aria-label="Claro ou escuro">${ic('moon')}</button><button class="iconbtn mobout" data-act2="backup" aria-label="Baixar backup">${ic('down')}</button><button class="iconbtn mobout" data-act2="sair" aria-label="Sair">${ic('out')}</button></div>
    
-   ${S.unreach?'<div class="banner">Ainda não consegui carregar seus dados. O que aparece aqui pode estar desatualizado.</div>':''}`}
+   ${S.unreach?`<div class="banner">${S.dbErr==='permission-denied'?'Sua conta não tem permissão para abrir estes dados.':'Ainda não consegui carregar seus dados.'} <small>(${esc(S.dbErr||'sem resposta do banco')})</small> <button class="btn sm" data-act2="retry">Tentar de novo</button></div>`:''}`}
 function render(animate=false){const act=document.activeElement,fid=act&&act.id&&main.contains(act)?act.id:null,caret=fid&&act.selectionStart;
   const y=window.scrollY;
   const page={painel:pagePainel,lancamentos:pageLanc,'para-onde-vai':pageOnde,dividas:pageDividas,cartoes:pageCartoes,'proximos-meses':pageProx}[S.page]||pagePainel;
@@ -517,7 +517,7 @@ addEventListener('hashchange',()=>{const p=location.hash.slice(1);if(PAGES.some(
 const F_=window.FB;
 const fbApp=F_.initializeApp({apiKey:"AIzaSyAOvEFd4HlNHpaliH8PJF4Y-vW5rY_o4Pk",authDomain:"financas-do-davi.firebaseapp.com",projectId:"financas-do-davi",storageBucket:"financas-do-davi.firebasestorage.app",messagingSenderId:"290327965365",appId:"1:290327965365:web:7d22f8387102fbefd358fc"});
 const auth=F_.getAuth(fbApp);
-let fsdb;try{fsdb=F_.initializeFirestore(fbApp,{localCache:F_.persistentLocalCache({tabManager:F_.persistentMultipleTabManager()})})}catch(e){console.warn(e);fsdb=F_.initializeFirestore(fbApp,{})}
+let fsdb;try{fsdb=F_.initializeFirestore(fbApp,{experimentalForceLongPolling:true,localCache:F_.persistentLocalCache({tabManager:F_.persistentSingleTabManager({forceOwnership:true})})})}catch(e){console.warn(e);fsdb=F_.initializeFirestore(fbApp,{experimentalForceLongPolling:true})}
 const gate=$('#gate'),appEl=$('#app');let gMode='entrar',gMsg='',gErr='',gBusy=false;
 const AUTH_ERR={'auth/invalid-credential':'E-mail ou senha incorretos.','auth/wrong-password':'E-mail ou senha incorretos.','auth/user-not-found':'E-mail ou senha incorretos.','auth/invalid-email':'Esse e-mail não é válido.','auth/weak-password':'Use uma senha com pelo menos 6 caracteres.','auth/email-already-in-use':'Já existe conta com esse e-mail. Use Entrar.','auth/too-many-requests':'Muitas tentativas. Espere alguns minutos.','auth/network-request-failed':'Sem conexão. Confira a internet.','auth/admin-restricted-operation':'Novos cadastros estão desativados neste app.','auth/operation-not-allowed':'Novos cadastros estão desativados neste app.'};
 const authErr=e=>AUTH_ERR[e?.code]||'Não deu certo. Tente de novo.';
@@ -544,15 +544,20 @@ gate.addEventListener('click',async e=>{const b=e.target.closest('[data-g]');if(
   if(g==='sair'){await F_.signOut(auth);return}
   if(g==='resend'){try{await F_.sendEmailVerification(auth.currentUser);gMsg='E-mail reenviado.'}catch(er){gErr=authErr(er)}drawGate();return}
   if(g==='verif'){gBusy=true;drawGate();try{await auth.currentUser.reload();if(auth.currentUser.emailVerified){await auth.currentUser.getIdToken(true);gBusy=false;enter(auth.currentUser);return}gErr='Ainda não apareceu como confirmado. Abra o link do e-mail e tente de novo.'}catch(er){gErr=authErr(er)}gBusy=false;drawGate()}});
-let entered=false;
-function enter(user){if(entered)return;entered=true;showGate(false);
-  S.loaded={tx:false,debts:false,cards:false};S.tx=[];S.debts=[];S.cards=[];S.cfg={};
-  store=fireStore(fsdb,user.uid);render(true);
-  unreachTimer=setTimeout(()=>{if(!allLoaded()){S.unreach=true;render(false)}},10000);
-  for(const k of Object.keys(COLS))store.watch(k,(rows)=>{S[k]=rows;S.loaded[k]=true;if(allLoaded()){clearTimeout(unreachTimer);S.unreach=false}refresh()});
+let entered=false,retried=false,curUser=null;
+function subscribe(){
+  store=fireStore(fsdb,curUser.uid);clearTimeout(unreachTimer);
+  unreachTimer=setTimeout(()=>{if(!allLoaded()){S.unreach=true;render(false)}},15000);
+  for(const k of Object.keys(COLS))store.watch(k,(rows)=>{S[k]=rows;S.loaded[k]=true;if(allLoaded()){clearTimeout(unreachTimer);S.unreach=false;S.dbErr=null}refresh()});
   store.watchCfg(c=>{const cur=S.cfg.extraCents;S.cfg=c||{};const f=$('#extra');if(f&&document.activeElement===f)S.cfg.extraCents=cur;refresh()})}
+async function resubscribe(){store?.stop();store=null;try{if(navigator.onLine)await curUser.getIdToken(true)}catch(e){console.warn(e)}S.dbErr=null;S.unreach=false;render(false);subscribe()}
+async function enter(user){if(entered)return;entered=true;curUser=user;retried=false;showGate(false);
+  S.loaded={tx:false,debts:false,cards:false};S.tx=[];S.debts=[];S.cards=[];S.cfg={};S.dbErr=null;S.unreach=false;
+  render(true);try{if(navigator.onLine)await user.getIdToken(true)}catch(e){console.warn(e)}
+  if(entered)subscribe()}
 document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if(!a)return;
-  if(a.dataset.act2==='sair'){store?.stop();store=null;entered=false;F_.signOut(auth)}
+  if(a.dataset.act2==='retry'){retried=false;resubscribe()}
+  if(a.dataset.act2==='sair'){clearTimeout(unreachTimer);store?.stop();store=null;entered=false;F_.signOut(auth)}
   if(a.dataset.act2==='backup'){const blob=new Blob([JSON.stringify({exportadoEm:new Date().toISOString(),lancamentos:S.tx,dividas:S.debts,cartoes:S.cards,config:S.cfg},null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download=`financas-davi-backup-${TODAY}.json`;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);toast('Backup gerado')}});
 (function boot(){
   const look=ls.get('fd_look',null);if(look)document.documentElement.dataset.theme=look;
