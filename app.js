@@ -28,7 +28,7 @@ const ic=n=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</
 /* ---------- categorias ---------- */
 const GRUPOS={essencial:{nome:'Essenciais',cor:'var(--g1)'},nao:{nome:'Não essenciais',cor:'var(--g2)'},fin:{nome:'Financeiras',cor:'var(--g3)'}};
 const CAT_D={essencial:['Moradia','Alimentação','Energia','Água','Internet e celular','Transporte','Saúde','Educação','Seguros','Cachorros'],nao:['Restaurantes','Delivery','Lazer','Assinaturas','Compras','Viagens','Casamento','Presentes','Outros'],fin:['Pagamento de dívida','Juros e multas','Tarifas e anuidade','IOF','Empréstimos']};
-const CAT_R=['Salário','Pró-labore','Comissões','Trabalhos extras','Rendimentos','Reembolso','Ajuda de família','Outras receitas'];
+const CAT_R=['Salário','Pró-labore','Comissões','Trabalhos extras','Rendimentos','Reembolso','Ajuda de família','Casamento','Outras receitas'];
 const MEIOS={pix:'Pix / conta',debito:'Débito',dinheiro:'Dinheiro',boleto:'Boleto'};
 
 /* ---------- estado ---------- */
@@ -46,7 +46,7 @@ function parcelaCents(tx,i){const N=tx.parcelas||1;if(tx.valorBase==='parcela')r
   const base=Math.floor(tx.valorCents/N);return i<N?base:tx.valorCents-base*(N-1)}
 function firstDate(tx){const card=tx.cartaoId&&S.cards.find(c=>c.id===tx.cartaoId);return card?faturaDue(tx.data,card):tx.data}
 function occsOf(tx,limitKey){const out=[],start=firstDate(tx),k0=start.slice(0,7),day=+start.slice(8,10);
-  const mk=(off,n,N,c)=>{const key=addM(k0,off);out.push({tx,key,date:clampDay(key,day),cents:c,n,N,paid:tx.pagos?.[key]===true})};
+  const mk=(off,n,N,c)=>{const key=addM(k0,off),vr=tx.modo==='recorrente'&&tx.valorVariavel===true,inf=vr&&tx.valores?.[key]!=null;out.push({tx,key,date:clampDay(key,day),cents:inf?tx.valores[key]:c,n,N,paid:tx.pagos?.[key]===true,variavel:vr,informado:inf})};
   if(tx.modo==='parcelado'){const N=tx.parcelas||1,k=tx.parcelaInicial||1;for(let i=k;i<=N;i++)mk(i-k,i,N,parcelaCents(tx,i))}
   else if(tx.modo==='recorrente'){const end=tx.fim&&tx.fim<limitKey?tx.fim:limitKey;for(let o=0;addM(k0,o)<=end;o++)mk(o,null,null,tx.valorCents)}
   else mk(0,null,null,tx.valorCents);
@@ -79,7 +79,8 @@ const totalDebt=()=>S.debts.reduce((a,d)=>a+Math.max(0,d.saldoCents||0),0);
 function parcelasFuturas(){let t=0;for(const x of S.tx){if(x.tipo!=='despesa'||x.modo!=='parcelado')continue;for(const o of occsOf(x,'9999-12'))if(!o.paid)t+=o.cents}return t}
 function attention(){const lim=addDays(TODAY,7),items=[],cardsDone={};
   const keys=Object.keys(index().by).filter(k=>k<=lim.slice(0,7)).sort();
-  for(const k of keys)for(const o of occs(k)){if(o.paid||o.date>lim)continue;
+  for(const o of occs(CUR))if(o.variavel&&!o.informado&&!o.paid)items.push({kind:'val',o,date:TODAY,cents:o.cents});
+  for(const k of keys)for(const o of occs(k)){if(o.paid||o.date>lim)continue;if(k===CUR&&o.variavel&&!o.informado)continue;
     if(o.tx?.cartaoId){const key=o.tx.cartaoId+k;if(!cardsDone[key]){const c=S.cards.find(x=>x.id===o.tx.cartaoId);cardsDone[key]={kind:'fatura',card:c,key:k,date:o.date,cents:0};if(c)items.push(cardsDone[key])}cardsDone[key].cents+=o.cents;continue}
     items.push({kind:o.debt?'debt':'tx',o,date:o.date,cents:o.cents})}
   items.sort((a,b)=>a.date.localeCompare(b.date));return items}
@@ -221,7 +222,8 @@ function pagePainel(){
 function debtSummary(best){const list=S.debts.filter(d=>d.saldoCents>0).sort((a,b)=>(best.payoff[a.id]||999)-(best.payoff[b.id]||999)||(b.jurosMes||0)-(a.jurosMes||0)).slice(0,5);
   if(!list.length)return emptyBox('Dívidas zeradas','Próxima etapa: reserva de emergência.');
   return list.map((d,i)=>`<div class="item"><span class="tag ${d.situacao==='atrasada'?'bad':''}">${i+1}</span><div class="tx"><b>${esc(d.credor)}</b><small>${d.jurosMes!=null?String(d.jurosMes).replace('.',',')+'% a.m.':'juros não informados'}${best.payoff[d.id]?` · quita em ${mShort(addM(CUR,best.payoff[d.id]))}`:''}</small></div><div class="money">${brl(d.saldoCents)}</div></div>`).join('')}
-function attItem(a){const late=a.date<TODAY,when=late?`venceu ${dBr(a.date)}`:a.date===TODAY?'vence hoje':`vence ${dBr(a.date)}`;
+function attItem(a){if(a.kind==='val'){const t=a.o.tx;return `<div class="item"><span class="tag warn">${ic('clock')}</span><div class="tx"><b>Informar valor: ${esc(t.descricao)}</b><small>${t.tipo==='receita'?'recebe':'vence'} ${dBr(a.o.date)}${a.cents?` · previsão ${brl(a.cents)}`:' · sem previsão'}</small></div><button class="btn sm" data-act="set-val" data-id="${t.id}" data-k="${a.o.key}">Informar</button></div>`}
+  const late=a.date<TODAY,when=late?`venceu ${dBr(a.date)}`:a.date===TODAY?'vence hoje':`vence ${dBr(a.date)}`;
   if(a.kind==='fatura')return `<div class="item"><span class="tag ${late?'bad':'warn'}">${ic('cartao')}</span><div class="tx"><b>Fatura ${esc(a.card.nome)} · ${brl(a.cents)}</b><small>${when}</small></div><button class="btn sm" data-act="ask-fatura" data-card="${a.card.id}" data-k="${a.key}">Pagar</button></div>`;
   if(a.kind==='debt'){const d=a.o.debt;return `<div class="item"><span class="tag ${late?'bad':'warn'}">${ic('divida')}</span><div class="tx"><b>${esc(d.credor)} · ${brl(a.cents)}</b><small>Dívida · ${when}</small></div><button class="btn sm" data-act="pay-debt" data-id="${d.id}">Pagar</button></div>`}
   const t=a.o.tx,rec=t.tipo==='receita';return `<div class="item"><span class="tag ${rec?'good':late?'bad':'warn'}">${ic(rec?'up':late?'alert':'clock')}</span><div class="tx"><b>${esc(t.descricao)} · ${brl(a.cents)}</b><small>${rec?(late?'previsto '+dBr(a.date):'previsto '+dBr(a.date)):when}</small></div><button class="btn sm" data-act="mark" data-id="${t.id}" data-k="${a.o.key}">${rec?'Recebi':'Paguei'}</button></div>`}
@@ -230,10 +232,10 @@ const catColor=c=>{for(const g in CAT_D)if(CAT_D[g].includes(c))return GRUPOS[g]
 function catBar(c,v,max,total,meta=''){return `<button class="bar" data-act="filter-cat" data-c="${esc(c)}"><span class="nm">${esc(c)}</span><span class="vl">${brl(v)}</span><span class="tr"><i style="width:${v/max*100}%;background:${catColor(c)}"></i></span><span class="mt"><span>${Math.round(v/total*100)}% das saídas</span>${meta}</span></button>`}
 
 function txRow(o){const d=o.debt,t=o.tx,rec=tipoOf(o)==='receita';
-  const forma=d?'<span class="chip sm warn">Dívida</span>':t.modo==='parcelado'?`<span class="chip sm">Parcela ${o.n}/${o.N}</span>`:t.modo==='recorrente'?'<span class="chip sm">Recorrente</span>':'<span class="chip sm">À vista</span>';
+  const forma=d?'<span class="chip sm warn">Dívida</span>':t.modo==='parcelado'?`<span class="chip sm">Parcela ${o.n}/${o.N}</span>`:t.modo==='recorrente'?(o.variavel?`<span class="chip sm ${o.informado?'':'warn'}">${o.informado?'Variável':'Estimado'}</span> <button class="btn sm" data-act="set-val" data-id="${t.id}" data-k="${o.key}">${o.informado?'Alterar':'Informar'}</button>`:'<span class="chip sm">Recorrente</span>'):'<span class="chip sm">À vista</span>';
   const card=t?.cartaoId&&S.cards.find(c=>c.id===t.cartaoId);
   const stat=d?`<button class="btn sm" data-act="pay-debt" data-id="${d.id}">Pagar</button>`:card?(o.paid?'<span class="chip sm good">Fatura paga</span>':'<span class="chip sm">Na fatura</span>'):`<label class="tog" data-stop="1"><input type="checkbox" data-act="mark-box" data-id="${t.id}" data-k="${o.key}" ${o.paid?'checked':''}><span>${o.paid?(rec?'Recebido':'Pago'):(rec?'A receber':(o.date<TODAY?'Atrasado':'A pagar'))}</span></label>`;
-  return `<div class="row" ${t?`data-act="edit-tx" data-id="${t.id}" role="button" tabindex="0"`:''} style="${t?'cursor:pointer':''}"><span class="dt">${dBr(o.date)}</span><div class="ds"><b>${esc(d?d.credor:t.descricao)}</b><small>${esc(d?'Parcela da dívida':(t.categoria||''))}${card?' · '+esc(card.nome):t?.meio&&MEIOS[t.meio]?' · '+MEIOS[t.meio]:''}</small></div><div class="ct">${forma}</div><div class="money ${rec?'in':''}">${rec?'+':''}${brl(o.cents)}</div><div class="end">${stat}</div></div>`}
+  return `<div class="row" ${t?`data-act="edit-tx" data-id="${t.id}" role="button" tabindex="0"`:''} style="${t?'cursor:pointer':''}"><span class="dt">${dBr(o.date)}</span><div class="ds"><b>${esc(d?d.credor:t.descricao)}</b><small>${esc(d?'Parcela da dívida':(t.categoria||''))}${card?' · '+esc(card.nome):t?.meio&&MEIOS[t.meio]?' · '+MEIOS[t.meio]:''}</small></div><div class="ct">${forma}</div><div class="money ${rec?'in':''}">${o.variavel&&!o.informado?'≈ ':''}${rec?'+':''}${brl(o.cents)}</div><div class="end">${stat}</div></div>`}
 function txListHtml(){let L=occs(S.month).slice().sort((a,b)=>a.date.localeCompare(b.date));
   if(S.fTipo!=='todos')L=L.filter(o=>tipoOf(o)===S.fTipo);
   if(S.fCat)L=L.filter(o=>(o.debt?'Pagamento de dívida':o.tx.categoria)===S.fCat);
@@ -374,18 +376,19 @@ function closeDialog(){const d=$('#modal dialog');if(d){d.close();d.remove()}F=n
 const mHead=t=>`<div class="mh"><h2>${t}</h2><button class="iconbtn" data-act="close" aria-label="Fechar">${ic('x')}</button></div>`;
 const seg=(field,opts,val,tone)=>`<div class="seg full ${tone?'tone':''}" role="group">${opts.map(([v,n])=>`<button type="button" class="${val===v?'on':''}" data-seg="${field}" data-v="${v}">${n}</button>`).join('')}</div>`;
 let F=null;
-function catOptions(tipo,val){if(tipo==='receita'){const extra=(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome);return [...CAT_R,...extra].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')+`<option value="__nova">+ Nova categoria…</option>`}
+function catOptions(tipo,val){if(tipo==='receita'){const extra=(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome);return [...new Set([...CAT_R,...extra])].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')+`<option value="__nova">+ Nova categoria…</option>`}
   return Object.keys(GRUPOS).map(g=>{const ex=(S.cfg.cats||[]).filter(c=>c.grupo===g).map(c=>c.nome);return `<optgroup label="${GRUPOS[g].nome}">${[...CAT_D[g],...ex].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')}</optgroup>`}).join('')+`<option value="__nova">+ Nova categoria…</option>`}
 function openTx(tipo,tx){
-  F=tx?{...tx,id:tx.id,valor:moneyInput(tx.valorCents),jaPago:tx.modo==='avista'&&tx.pagos?.[firstDate(tx).slice(0,7)]===true,err:''}:{tipo:tipo||'despesa',descricao:'',modo:'avista',valor:'',valorBase:'total',parcelas:2,parcelaInicial:1,data:TODAY,fim:'',categoria:tipo==='receita'?'Salário':'Alimentação',meio:'pix',cartaoId:'',jaPago:true,obs:'',err:''};
+  F=tx?{...tx,id:tx.id,valor:moneyInput(tx.valorCents),jaPago:tx.modo==='avista'&&tx.pagos?.[firstDate(tx).slice(0,7)]===true,err:'',valorVariavelAntes:tx.valorVariavel===true}:{tipo:tipo||'despesa',descricao:'',modo:'avista',valor:'',valorBase:'total',parcelas:2,parcelaInicial:1,data:TODAY,fim:'',categoria:tipo==='receita'?'Salário':'Alimentação',meio:'pix',cartaoId:'',jaPago:true,obs:'',err:'',valorVariavel:false,valorMes:''};
   if(F.cartaoId)F.meio='cartao';
   openDialog(`<div id="txf"></div>`);drawTxForm()}
-function txPreview(){const c=parseMoney(F.valor);if(!c)return 'Digite o valor para ver como fica.';
+function txPreview(){const vr=F.modo==='recorrente'&&F.valorVariavel;const c=parseMoney(F.valor)||0;if(!c&&!vr)return 'Digite o valor para ver como fica.';
   const tmp={...F,valorCents:c,parcelas:+F.parcelas||1,parcelaInicial:+F.parcelaInicial||1,cartaoId:F.meio==='cartao'?F.cartaoId:'',pagos:{}};const v=F.tipo==='receita'?'entra':'sai';
   if(tmp.parcelaInicial>tmp.parcelas)return 'A parcela inicial não pode ser maior que o total.';
   const start=/^\d{4}-\d{2}-\d{2}$/.test(F.data)?firstDate(tmp):null;if(!start)return 'Escolha a data.';
   const card=tmp.cartaoId&&S.cards.find(x=>x.id===tmp.cartaoId),faturaTxt=card?` na fatura ${esc(card.nome)} de ${mShort(start.slice(0,7))} (vence ${dBr(start)})`:'';
   if(F.modo==='avista')return `${brl(c)} ${v} em ${dBr(start)}${faturaTxt}.`;
+  if(vr)return `Valor muda todo mês. ${F.tipo==='receita'?'Entra':'Sai'} todo dia ${start.slice(8,10)} a partir de ${mShort(start.slice(0,7))}${F.fim?`, até ${mShort(F.fim)}`:''}${faturaTxt}. ${c?`Enquanto você não informar o valor do mês, a previsão usa ${brl(c)}.`:'Sem estimativa, a previsão conta zero até você informar o valor do mês.'}`;
   if(F.modo==='recorrente')return `${brl(c)} ${v} todo mês a partir de ${mShort(start.slice(0,7))}${F.fim?`, até ${mShort(F.fim)}`:', sem data para acabar'}${faturaTxt}.`;
   const os=occsOf(tmp,'9999-12'),tot=os.reduce((a,o)=>a+o.cents,0),ult=os[os.length-1];
   return `${os.length}x de ${brl(os[0].cents)}${faturaTxt}, da parcela ${tmp.parcelaInicial} à ${tmp.parcelas}, última em ${mShort(ult.key)}. ${tmp.parcelaInicial>1?'Falta':'Total'}: <b>${brl(tot)}</b>.`}
@@ -397,7 +400,9 @@ function drawTxForm(){const box=$('#txf');if(!box)return;const isD=F.tipo==='des
     <div class="fld w"><span class="lb">Forma</span>${seg('modo',[['avista','À vista'],['parcelado','Parcelado'],['recorrente','Recorrente']],F.modo)}</div>
     ${F.modo==='parcelado'?`<div class="fld"><label for="f_n">Total de parcelas</label><input class="inp" id="f_n" type="number" min="2" max="240" data-f="parcelas" value="${esc(F.parcelas)}"></div>
       <div class="fld"><label for="f_k">Começa na parcela</label><input class="inp" id="f_k" type="number" min="1" data-f="parcelaInicial" value="${esc(F.parcelaInicial)}"><span class="hint">Já em andamento? Ex.: 14 em 14/18.</span></div>`:''}
-    <div class="fld"><label for="f_val">${F.modo==='recorrente'?'Valor por mês':F.modo==='parcelado'?(F.valorBase==='parcela'?'Valor de cada parcela':'Valor total'):'Valor'}</label><input class="inp" id="f_val" inputmode="decimal" data-f="valor" value="${esc(F.valor)}" placeholder="0,00" autocomplete="off"></div>
+    ${F.modo==='recorrente'?`<div class="fld w"><label class="tog"><input type="checkbox" data-f="valorVariavel" ${F.valorVariavel?'checked':''}>O valor muda todo mês</label></div>`:''}
+    ${F.modo==='recorrente'&&F.valorVariavel&&!F.id?`<div class="fld w"><label for="f_vm">Valor do primeiro mês (se já souber)</label><input class="inp" id="f_vm" inputmode="decimal" data-f="valorMes" value="${esc(F.valorMes||'')}" placeholder="0,00" autocomplete="off"></div>`:''}
+    <div class="fld"><label for="f_val">${F.modo==='recorrente'?(F.valorVariavel?'Estimativa por mês (opcional)':'Valor por mês'):F.modo==='parcelado'?(F.valorBase==='parcela'?'Valor de cada parcela':'Valor total'):'Valor'}</label><input class="inp" id="f_val" inputmode="decimal" data-f="valor" value="${esc(F.valor)}" placeholder="0,00" autocomplete="off">${F.modo==='recorrente'&&F.valorVariavel?'<span class="hint">Use o menor valor que costuma acontecer, para a previsão não enganar.</span>':''}</div>
     ${F.modo==='parcelado'?`<div class="fld"><span class="lb">O valor digitado é</span>${seg('valorBase',[['total','O total'],['parcela','A parcela']],F.valorBase)}</div>`:`<div class="fld"><label for="f_cat0">Categoria</label><select class="sel" id="f_cat0" data-f="categoria">${catOptions(F.tipo,F.categoria)}</select></div>`}
     <div class="fld"><label for="f_dt">${F.meio==='cartao'&&isD?'Data da compra':F.modo==='parcelado'?(+F.parcelaInicial>1?`Vencimento da parcela ${esc(F.parcelaInicial)}`:'Vencimento da 1ª parcela'):F.modo==='recorrente'?'Primeiro vencimento':isD?'Data':'Data do recebimento'}</label><input class="inp" id="f_dt" type="date" data-f="data" value="${esc(F.data)}"></div>
     ${F.modo==='parcelado'?`<div class="fld"><label for="f_cat">Categoria</label><select class="sel" id="f_cat" data-f="categoria">${catOptions(F.tipo,F.categoria)}</select></div>`:F.modo==='recorrente'?`<div class="fld"><label for="f_fim">Termina em (opcional)</label><input class="inp" id="f_fim" type="month" data-f="fim" value="${esc(F.fim||'')}"></div>`:'<div class="fld" aria-hidden="true"></div>'}
@@ -407,8 +412,8 @@ function drawTxForm(){const box=$('#txf');if(!box)return;const isD=F.tipo==='des
     <div class="prev" id="txprev">${txPreview()}</div>
     ${F.err?`<div class="err">${esc(F.err)}</div>`:''}</form>
    <div class="mf">${F.id?`<button class="btn danger sp" data-act="tx-del">${F.confirmDel?(F.modo==='avista'?'Confirmar exclusão':'Apaga todas as parcelas e meses. Confirmar'):'Excluir'}</button>`:''}<button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="tx-save">Salvar</button></div>`;}
-async function saveTx(){const c=parseMoney(F.valor);let err='';
-  if(!F.descricao.trim())err='Dê um nome ao lançamento.';else if(!c||c<=0)err='Digite um valor maior que zero.';else if(!/^\d{4}-\d{2}-\d{2}$/.test(F.data))err='Escolha uma data válida.';
+async function saveTx(){const vrS=F.modo==='recorrente'&&F.valorVariavel===true;const c=parseMoney(F.valor)||(vrS?0:null);let err='';
+  if(!F.descricao.trim())err='Dê um nome ao lançamento.';else if(!vrS&&(!c||c<=0))err='Digite um valor maior que zero.';else if(!/^\d{4}-\d{2}-\d{2}$/.test(F.data))err='Escolha uma data válida.';
   else if(F.modo==='parcelado'&&(+F.parcelas<2||+F.parcelaInicial<1||+F.parcelaInicial>+F.parcelas))err='Confira o número de parcelas.';
   else if(F.categoria==='__nova'&&!(F.novaCat||'').trim())err='Dê um nome à categoria nova.';
   if(err){F.err=err;drawTxForm();return}
@@ -420,10 +425,17 @@ async function saveTx(){const c=parseMoney(F.valor);let err='';
   if(F.modo==='parcelado'){doc.parcelas=+F.parcelas;doc.parcelaInicial=+F.parcelaInicial}
   if(F.modo==='recorrente'&&F.fim)doc.fim=F.fim;
   const fk=firstDate(doc).slice(0,7);
+  if(vrS){doc.valorVariavel=true;doc.valores={...(F.valores||{})};
+    if(F.id&&!F.valorVariavelAntes){const old=S.tx.find(t=>t.id===F.id);if(old)for(const k in (old.pagos||{}))if(old.pagos[k]===true&&doc.valores[k]==null)doc.valores[k]=old.valorCents}
+    const vm=parseMoney(F.valorMes);if(!F.id&&vm!=null)doc.valores[fk]=vm}
+  else if(F.valores)doc.valores=F.valores;
   if(!useCard&&(F.modo==='avista'||!F.id)){if(F.jaPago)doc.pagos[fk]=true;else delete doc.pagos[fk]}
   const id=F.id||uid(),go2=fk;closeDialog();
   await write(()=>store.put('tx',id,clean(doc)),'Lançamento salvo');
   if(S.page==='lancamentos'&&go2!==S.month&&!F?.id){S.month=go2;dirty();render(false)}}
+function valForm(t,key){const cur=t.valores?.[key];
+  openDialog(mHead('Valor de '+mLong(key))+`<form class="fm" id="valform" novalidate><p class="fld w">${esc(t.descricao)}</p><div class="fld w"><label for="v_c">${t.tipo==='receita'?'Quanto vai receber':'Quanto vai pagar'}</label><input class="inp" id="v_c" inputmode="decimal" value="${cur!=null?moneyInput(cur):''}" placeholder="0,00" autocomplete="off"><span class="hint">Vale só para este mês. Os próximos continuam na estimativa de ${brl(t.valorCents||0)}.</span></div><div class="err" id="v_e" hidden></div></form>
+  <div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="val-save" data-id="${t.id}" data-k="${key}">Salvar</button></div>`);$('#v_c').focus()}
 function debtForm(d){const v=d||{};
   openDialog(mHead(d?'Editar dívida':'Nova dívida')+`<form id="debtform" class="fm" novalidate>
    <div class="fld"><label for="d_cred">Credor</label><input class="inp" id="d_cred" name="credor" value="${esc(v.credor||'')}" placeholder="Ex.: banco, loja, pessoa"></div>
@@ -475,6 +487,8 @@ document.addEventListener('click',async e=>{
     case 'close':closeDialog();break;
     case 'tx-save':syncF();saveTx();break;
     case 'tx-del':if(!F)break;if(!F.confirmDel){syncF();F.confirmDel=true;drawTxForm();break}{const t=S.tx.find(x=>x.id===F.id);closeDialog();if(t)deleteTx(t)}break;
+    case 'set-val':if(tx)valForm(tx,a.dataset.k);break;
+    case 'val-save':{const c=parseMoney($('#v_c').value);if(c==null||c<0){const er=$('#v_e');er.textContent='Digite o valor.';er.hidden=false;break}const k=a.dataset.k;closeDialog();write(()=>store.patch('tx',id,{valores:{[k]:c}}),'Valor salvo');break}
     case 'mark':if(tx)togglePaid(tx,a.dataset.k,true);break;
     case 'mark-box':e.stopPropagation();if(tx)togglePaid(tx,a.dataset.k,a.checked);break;
     case 'f-tipo':S.fTipo=a.dataset.v;render(false);break;
@@ -505,7 +519,8 @@ document.addEventListener('change',e=>{
   if(e.target.id==='f-cat'){S.fCat=e.target.value;$('#txlist').innerHTML=txListHtml()}
   if(e.target.id==='f-status'){S.fStatus=e.target.value;$('#txlist').innerHTML=txListHtml()}
   if(e.target.id==='extra'){write(()=>store.cfg(clean(S.cfg)))}
-  if(e.target.dataset?.f==='data'&&F){drawTxForm()}
+  if(e.target.dataset?.f==='data'&&F){if(!F.id)F.jaPago=F.data<=TODAY;drawTxForm()}
+  if(e.target.dataset?.f==='valorVariavel'&&F){drawTxForm()}
   if(e.target.dataset?.f==='parcelaInicial'&&F){drawTxForm()}});
 const tip=$('#tip');
 document.addEventListener('mousemove',e=>{const t=e.target.closest?.('[data-tip]');if(!t){tip.style.opacity=0;return}tip.textContent=t.dataset.tip;tip.style.opacity=1;const w=tip.offsetWidth,h=tip.offsetHeight;tip.style.transform=`translate(${Math.max(8,Math.min(innerWidth-w-8,e.clientX+14))}px,${Math.max(8,e.clientY-h-10)}px)`});
