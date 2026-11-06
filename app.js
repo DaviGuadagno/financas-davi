@@ -22,7 +22,7 @@ const dBr=d=>d?`${d.slice(8,10)}/${d.slice(5,7)}`:'';
 const addDays=(iso,n)=>{const [y,m,d]=iso.split('-').map(Number);const t=new Date(y,m-1,d+n);return `${t.getFullYear()}-${pad(t.getMonth()+1)}-${pad(t.getDate())}`};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
-const ICON={painel:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',lista:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',pizza:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',divida:'<path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6" transform="rotate(90 18 9)"/>',cartao:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/>',cal:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',plus:'<path d="M12 5v14M5 12h14"/>',left:'<path d="M15 6l-6 6 6 6"/>',right:'<path d="M9 6l6 6-6 6"/>',bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 21h4"/>',moon:'<path d="M20 14A8 8 0 1 1 10 4a7 7 0 0 0 10 10z"/>',panel:'<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M10 4v16"/>',alert:'<path d="M12 4l9 16H3zM12 10v4M12 17h.01"/>',clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',up:'<path d="M12 19V5M6 11l6-6 6 6"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',check:'<path d="M5 12l5 5 9-10"/>',down:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',out:'<path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9"/>'};
+const ICON={painel:'<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>',lista:'<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',pizza:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',divida:'<path d="M3 17l6-6 4 4 8-9"/><path d="M15 6h6v6" transform="rotate(90 18 9)"/>',cartao:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18"/>',cal:'<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',plus:'<path d="M12 5v14M5 12h14"/>',left:'<path d="M15 6l-6 6 6 6"/>',right:'<path d="M9 6l6 6-6 6"/>',bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 21h4"/>',moon:'<path d="M20 14A8 8 0 1 1 10 4a7 7 0 0 0 10 10z"/>',panel:'<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M10 4v16"/>',alert:'<path d="M12 4l9 16H3zM12 10v4M12 17h.01"/>',clock:'<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',up:'<path d="M12 19V5M6 11l6-6 6 6"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',clip:'<path d="M20 11l-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/>',check:'<path d="M5 12l5 5 9-10"/>',down:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',out:'<path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9"/>'};
 const ic=n=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
 
 /* ---------- categorias ---------- */
@@ -117,6 +117,9 @@ function fireStore(fs,uid){const base=`users/${uid}`,col=k=>F_.collection(fs,bas
   put(k,id,data){return F_.setDoc(F_.doc(col(k),id),data)},
   patch(k,id,data){return F_.setDoc(F_.doc(col(k),id),data,{merge:true})},
   del(k,id){return F_.deleteDoc(F_.doc(col(k),id))},
+  putAnexo(id,data){return F_.setDoc(F_.doc(fs,base,'anexos',id),data)},
+  getAnexo(id){return F_.getDoc(F_.doc(fs,base,'anexos',id)).then(d=>d.exists()?d.data():null)},
+  delAnexo(id){return F_.deleteDoc(F_.doc(fs,base,'anexos',id))},
   cfg(data){return F_.setDoc(F_.doc(fs,base,'config','geral'),data)},
   stop(){unsub.forEach(f=>f())}}}
 function onDbError(e){console.warn(e);if(e?.code==='permission-denied'&&!retried){retried=true;setTimeout(resubscribe,800);return}S.dbErr=e?.code||'erro';S.unreach=true;render(false)}
@@ -135,6 +138,7 @@ async function saveDebtPayment(d,valor,data,novoSaldo){const txId=uid();
 async function deleteTx(tx){
   if(tx.debtId){const d=S.debts.find(x=>x.id===tx.debtId);if(d){const p=(d.pagamentos||[]).find(i=>i.txId===tx.id);
     if(p)await write(()=>store.patch('debts',d.id,{saldoCents:p.saldoAntes??(d.saldoCents+p.valorCents),pagamentos:d.pagamentos.filter(i=>i.txId!==tx.id)}))}}
+  for(const a of (tx.anexos||[]))write(()=>store.delAnexo(a.id));
   await write(()=>store.del('tx',tx.id),'Lançamento excluído')}
 
 /* ---------- gráficos ---------- */
@@ -245,7 +249,7 @@ function txRow(o){const d=o.debt,t=o.tx,rec=tipoOf(o)==='receita';
   const forma=d?'<span class="chip sm warn">Dívida</span>':t.modo==='parcelado'?`<span class="chip sm">Parcela ${o.n}/${o.N}</span>`:t.modo==='recorrente'?(o.variavel?`<span class="chip sm ${o.informado?'':'warn'}">${o.informado?'Variável':'Estimado'}</span> <button class="btn sm" data-act="set-val" data-id="${t.id}" data-k="${o.key}">${o.informado?'Alterar':'Informar'}</button>`:'<span class="chip sm">Recorrente</span>'):'<span class="chip sm">À vista</span>';
   const card=t?.cartaoId&&S.cards.find(c=>c.id===t.cartaoId);
   const stat=d?`<button class="btn sm" data-act="pay-debt" data-id="${d.id}">Pagar</button>`:card?(o.paid?'<span class="chip sm good">Fatura paga</span>':'<span class="chip sm">Na fatura</span>'):`<label class="tog" data-stop="1"><input type="checkbox" data-act="mark-box" data-id="${t.id}" data-k="${o.key}" ${o.paid?'checked':''}><span>${o.paid?(rec?'Recebido':'Pago'):(rec?'A receber':(o.date<TODAY?'Atrasado':'A pagar'))}</span></label>`;
-  return `<div class="row" ${t?`data-act="edit-tx" data-id="${t.id}" role="button" tabindex="0"`:''} style="${t?'cursor:pointer':''}"><span class="dt">${dBr(o.date)}</span><div class="ds"><b>${esc(d?d.credor:t.descricao)}</b><small>${esc(d?'Parcela da dívida':(t.categoria||''))}${card?' · '+esc(card.nome):t?.meio&&MEIOS[t.meio]?' · '+MEIOS[t.meio]:''}</small></div><div class="ct">${forma}</div><div class="money ${rec?'in':''}">${o.variavel&&!o.informado?'≈ ':''}${rec?'+':''}${brl(o.cents)}</div><div class="end">${stat}</div></div>`}
+  return `<div class="row" ${t?`data-act="edit-tx" data-id="${t.id}" role="button" tabindex="0"`:''} style="${t?'cursor:pointer':''}"><span class="dt">${dBr(o.date)}</span><div class="ds"><b>${esc(d?d.credor:t.descricao)}${t?.anexos?.length?` <button class="chip sm" style="vertical-align:1px" data-act="ver-anexo" data-id="${t.id}" aria-label="Ver nota fiscal">${ic('clip').replace('class="ic"','class="ic" style="width:12px;height:12px"')}${t.anexos.length>1?t.anexos.length:'Nota'}</button>`:''}</b><small>${esc(d?'Parcela da dívida':(t.categoria||''))}${card?' · '+esc(card.nome):t?.meio&&MEIOS[t.meio]?' · '+MEIOS[t.meio]:''}</small></div><div class="ct">${forma}</div><div class="money ${rec?'in':''}">${o.variavel&&!o.informado?'≈ ':''}${rec?'+':''}${brl(o.cents)}</div><div class="end">${stat}</div></div>`}
 function txListHtml(){let L=occs(S.month).slice().sort((a,b)=>a.date.localeCompare(b.date));
   if(S.fTipo!=='todos')L=L.filter(o=>tipoOf(o)===S.fTipo);
   if(S.fCat)L=L.filter(o=>(o.debt?'Pagamento de dívida':o.tx.categoria)===S.fCat);
@@ -388,6 +392,20 @@ const seg=(field,opts,val,tone)=>`<div class="seg full ${tone?'tone':''}" role="
 let F=null;
 function catOptions(tipo,val){if(tipo==='receita'){const extra=(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome);return [...new Set([...CAT_R,...extra])].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')+`<option value="__nova">+ Nova categoria…</option>`}
   return Object.keys(GRUPOS).map(g=>{const ex=(S.cfg.cats||[]).filter(c=>c.grupo===g).map(c=>c.nome);return `<optgroup label="${GRUPOS[g].nome}">${[...CAT_D[g],...ex].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')}</optgroup>`}).join('')+`<option value="__nova">+ Nova categoria…</option>`}
+const MAX_ANEXOS=5,MAX_DATA=950000;
+function comprimirFoto(file){return new Promise((ok,no)=>{const u=URL.createObjectURL(file),im=new Image();
+  im.onerror=()=>{URL.revokeObjectURL(u);no(new Error('leitura'))};
+  im.onload=()=>{URL.revokeObjectURL(u);const w0=im.naturalWidth,h0=im.naturalHeight;
+    for(const lado of [1800,1500,1200,1000,800])for(const q of [.72,.6,.5]){const r=Math.min(1,lado/Math.max(w0,h0)),c=document.createElement('canvas');c.width=Math.round(w0*r);c.height=Math.round(h0*r);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);const d=c.toDataURL('image/jpeg',q);if(d.length<=MAX_DATA)return ok({dataUrl:d,w:c.width,h:c.height})}
+    no(new Error('tamanho'))};im.src=u})}
+function anexosForm(){const ex=(F.anexos||[]).filter(a=>!(F.anexosRemovidos||[]).includes(a.id)),nv=F.novosAnexos||[],tot=ex.length+nv.length;
+  const vh='style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden"';
+  return `<div class="fld w"><span class="lb">Nota fiscal ou comprovante (opcional)</span>
+   ${tot<MAX_ANEXOS?`<div class="acts"><label class="btn sm" style="position:relative;cursor:pointer">Tirar foto<input ${vh} type="file" accept="image/*" capture="environment" data-anexo="1" aria-label="Tirar foto"></label><label class="btn sm" style="position:relative;cursor:pointer">Da galeria<input ${vh} type="file" accept="image/*" multiple data-anexo="1" aria-label="Escolher da galeria"></label></div>`:`<span class="hint">Limite de ${MAX_ANEXOS} fotos por lançamento.</span>`}
+   ${F.anexando?'<span class="hint">Preparando a foto…</span>':''}
+   ${tot?`<div class="acts" style="margin-top:6px">${ex.map((a,i)=>`<span class="chip">${ic('clip')}Foto ${i+1} salva<button type="button" aria-label="Remover foto salva" data-act="anexo-rm" data-id2="${a.id}" style="margin-left:4px">${ic('x')}</button></span>`).join('')}${nv.map(a=>`<span style="position:relative;display:inline-block"><img src="${a.dataUrl}" alt="Foto anexada" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--line);display:block"><button type="button" aria-label="Remover foto" data-act="anexo-rm" data-id2="${a.id}" style="position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;background:var(--modal);border:1px solid var(--line);display:grid;place-items:center">${ic('x')}</button></span>`).join('')}</div>`:''}</div>`}
+function verAnexo(aid,n,tot){openDialog(mHead(tot>1?`Foto ${n} de ${tot}`:'Nota fiscal')+`<div id="ax" style="padding:13px 19px 19px;min-height:120px"><p class="hint">Abrindo a foto…</p></div>`);
+  store.getAnexo(aid).then(d=>{const b=$('#ax');if(!b)return;b.innerHTML=d?.dataUrl?`<img src="${d.dataUrl}" alt="Nota fiscal anexada" style="width:100%;border-radius:12px;display:block"><p class="hint" style="margin-top:8px">No celular, toque e segure a foto para salvar.</p>`:'<p class="err">Não encontrei essa foto. Confira a internet e tente de novo.</p>'}).catch(e=>{console.warn(e);const b=$('#ax');if(b)b.innerHTML='<p class="err">Não consegui abrir a foto. Confira a internet e tente de novo.</p>'})}
 function openTx(tipo,tx){
   F=tx?{...tx,id:tx.id,valor:moneyInput(tx.valorCents),jaPago:tx.modo==='avista'&&tx.pagos?.[firstDate(tx).slice(0,7)]===true,err:'',valorVariavelAntes:tx.valorVariavel===true}:{tipo:tipo||'despesa',descricao:'',modo:'avista',valor:'',valorBase:'total',parcelas:2,parcelaInicial:1,data:TODAY,fim:'',categoria:tipo==='receita'?'Salário':'Alimentação',meio:'pix',cartaoId:'',jaPago:true,obs:'',err:'',valorVariavel:false,valorMes:''};
   if(F.cartaoId)F.meio='cartao';
@@ -426,6 +444,7 @@ function drawTxForm(){const box=$('#txf');if(!box)return;const isD=F.tipo==='des
     ${isD&&F.meio==='cartao'?`<div class="fld"><label for="f_card">Qual cartão</label><select class="sel" id="f_card" data-f="cartaoId">${F.cartaoId?'':'<option value="" selected>Escolha…</option>'}${S.cards.map(c=>`<option value="${c.id}" ${F.cartaoId===c.id?'selected':''}>${esc(c.nome)}${c.titular?' ('+esc(c.titular)+')':''}</option>`).join('')}<option value="__novo" ${F.cartaoId==='__novo'?'selected':''}>+ Cadastrar novo cartão</option></select></div>`:''}
     ${isD&&F.meio==='cartao'&&F.cartaoId==='__novo'?`<div class="fld"><label for="n_nome">Nome do cartão</label><input class="inp" id="n_nome" data-f="ncNome" value="${esc(F.ncNome||'')}" placeholder="Ex.: Nubank" autocomplete="off"></div><div class="fld"><label for="n_tit">Titular</label><input class="inp" id="n_tit" data-f="ncTitular" value="${esc(F.ncTitular||'')}" autocomplete="off"></div><div class="fld"><label for="n_fec">Dia do fechamento</label><input class="inp" id="n_fec" type="number" min="1" max="31" data-f="ncFecha" value="${esc(F.ncFecha||'')}"></div><div class="fld"><label for="n_ven">Dia do vencimento</label><input class="inp" id="n_ven" type="number" min="1" max="31" data-f="ncVenc" value="${esc(F.ncVenc||'')}"></div><div class="fld w"><label for="n_lim">Limite (opcional)</label><input class="inp" id="n_lim" inputmode="decimal" data-f="ncLimite" value="${esc(F.ncLimite||'')}" placeholder="0,00" autocomplete="off"></div>`:''}
     ${F.meio!=='cartao'||!isD?`<div class="fld" style="justify-content:flex-end">${F.modo==='avista'||!F.id?`<label class="tog"><input type="checkbox" data-f="jaPago" ${F.jaPago?'checked':''}>${isD?'Já paguei':'Já recebi'}${F.modo!=='avista'?' a primeira':''}</label>`:''}</div>`:''}
+    ${anexosForm()}
     <div class="prev" id="txprev">${txPreview()}</div>
     ${F.err?`<div class="err">${esc(F.err)}</div>`:''}</form>
    <div class="mf">${F.id?`<button class="btn danger sp" data-act="tx-del">${F.confirmDel?(F.modo==='avista'?'Confirmar exclusão':'Apaga todas as parcelas e meses. Confirmar'):'Excluir'}</button>`:''}<button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="tx-save">Salvar</button></div>`;}
@@ -450,8 +469,12 @@ async function saveTx(){const vrS=F.modo==='recorrente'&&F.valorVariavel===true;
     const vm=parseMoney(F.valorMes);if(!F.id&&vm!=null)doc.valores[fk]=vm}
   else if(F.valores)doc.valores=F.valores;
   if(!useCard&&(F.modo==='avista'||!F.id)){if(F.jaPago)doc.pagos[fk]=true;else delete doc.pagos[fk]}
-  const id=F.id||uid(),go2=fk;closeDialog();
-  await write(()=>store.put('tx',id,clean(doc)),'Lançamento salvo');
+  const id=F.id||uid(),go2=fk,novos=F.novosAnexos||[],remov=F.anexosRemovidos||[];
+  doc.anexos=[...(F.anexos||[]).filter(a=>!remov.includes(a.id)),...novos.map(a=>({id:a.id,w:a.w,h:a.h,criadoEm:Date.now()}))];
+  closeDialog();if(novos.length)toast('Salvando a foto…');
+  let fotosOk=true;for(const a of novos){try{const w=Promise.resolve(store.putAnexo(a.id,{dataUrl:a.dataUrl,txId:id,criadoEm:Date.now()}));if(navigator.onLine)await w;else w.catch(e=>console.warn(e))}catch(e){console.warn(e);fotosOk=false;doc.anexos=doc.anexos.filter(x=>x.id!==a.id)}}
+  await write(()=>store.put('tx',id,clean(doc)),fotosOk?'Lançamento salvo':'Lançamento salvo, mas a foto não foi. Tente anexar de novo.');
+  for(const r of remov)write(()=>store.delAnexo(r));
   if(S.page==='lancamentos'&&go2!==S.month&&!F?.id){S.month=go2;dirty();render(false)}}
 function valForm(t,key){const cur=t.valores?.[key];
   openDialog(mHead('Valor de '+mLong(key))+`<form class="fm" id="valform" novalidate><p class="fld w">${esc(t.descricao)}</p><div class="fld w"><label for="v_c">${t.tipo==='receita'?'Quanto vai receber':'Quanto vai pagar'}</label><input class="inp" id="v_c" inputmode="decimal" value="${cur!=null?moneyInput(cur):''}" placeholder="0,00" autocomplete="off"><span class="hint">Vale só para este mês. Os próximos continuam na estimativa de ${brl(t.valorCents||0)}.</span></div><div class="err" id="v_e" hidden></div></form>
@@ -507,6 +530,9 @@ document.addEventListener('click',async e=>{
     case 'close':closeDialog();break;
     case 'tx-save':syncF();saveTx();break;
     case 'tx-del':if(!F)break;if(!F.confirmDel){syncF();F.confirmDel=true;drawTxForm();break}{const t=S.tx.find(x=>x.id===F.id);closeDialog();if(t)deleteTx(t)}break;
+    case 'ver-anexo':if(tx?.anexos?.length){const L=tx.anexos;if(L.length===1)verAnexo(L[0].id,1,1);else openDialog(mHead('Fotos anexadas')+`<div class="mf" style="justify-content:flex-start;padding-top:14px">${L.map((x,i)=>`<button class="btn sm" data-act="ver-um" data-a="${x.id}" data-n="${i+1}" data-t="${L.length}">Foto ${i+1}</button>`).join('')}</div>`)}break;
+    case 'ver-um':verAnexo(a.dataset.a,+a.dataset.n,+a.dataset.t);break;
+    case 'anexo-rm':{if(!F)break;syncF();const i=a.dataset.id2;if((F.novosAnexos||[]).some(x=>x.id===i))F.novosAnexos=F.novosAnexos.filter(x=>x.id!==i);else F.anexosRemovidos=[...(F.anexosRemovidos||[]),i];drawTxForm();break}
     case 'set-val':if(tx)valForm(tx,a.dataset.k);break;
     case 'val-save':{const c=parseMoney($('#v_c').value);if(c==null||c<0){const er=$('#v_e');er.textContent='Digite o valor.';er.hidden=false;break}const k=a.dataset.k;closeDialog();write(()=>store.patch('tx',id,{valores:{[k]:c}}),'Valor salvo');break}
     case 'mark':if(tx)togglePaid(tx,a.dataset.k,true);break;
@@ -534,7 +560,10 @@ document.addEventListener('input',e=>{
   if(e.target.dataset?.f&&F){applyField(e.target);const p=$('#txprev');if(p)p.innerHTML=txPreview();return}
   if(e.target.id==='f-text'){S.fText=e.target.value;$('#txlist').innerHTML=txListHtml();return}
   if(e.target.id==='extra'){const v=+e.target.value;S.cfg={...S.cfg,extraCents:v};$('#extra-v').textContent=brl(v);renderPlan()}});
-document.addEventListener('change',e=>{
+document.addEventListener('change',async e=>{
+  if(e.target.dataset?.anexo&&F){const files=[...e.target.files];e.target.value='';if(!files.length)return;syncF();const usados=(F.anexos||[]).filter(a=>!(F.anexosRemovidos||[]).includes(a.id)).length+(F.novosAnexos||[]).length;const livres=MAX_ANEXOS-usados;F.anexando=true;drawTxForm();let erro=false;
+    for(const f of files.slice(0,livres)){try{const r=await comprimirFoto(f);if(!F)return;F.novosAnexos=[...(F.novosAnexos||[]),{id:uid(),...r}]}catch(er){console.warn(er);erro=true}}
+    if(!F)return;F.anexando=false;F.err=erro?'Não consegui ler uma das fotos. Tente outra.':files.length>livres?`Limite de ${MAX_ANEXOS} fotos por lançamento.`:'';drawTxForm();return}
   if(e.target.dataset?.f&&F&&e.target.tagName==='SELECT'){applyField(e.target);drawTxForm();return}
   if(e.target.id==='f-cat'){S.fCat=e.target.value;$('#txlist').innerHTML=txListHtml()}
   if(e.target.id==='f-status'){S.fStatus=e.target.value;$('#txlist').innerHTML=txListHtml()}
