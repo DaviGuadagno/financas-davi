@@ -390,8 +390,8 @@ function closeDialog(){const d=$('#modal dialog');if(d){d.close();d.remove()}F=n
 const mHead=t=>`<div class="mh"><h2>${t}</h2><button class="iconbtn" data-act="close" aria-label="Fechar">${ic('x')}</button></div>`;
 const seg=(field,opts,val,tone)=>`<div class="seg full ${tone?'tone':''}" role="group">${opts.map(([v,n])=>`<button type="button" class="${val===v?'on':''}" data-seg="${field}" data-v="${v}">${n}</button>`).join('')}</div>`;
 let F=null;
-function catOptions(tipo,val){if(tipo==='receita'){const extra=(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome);return [...new Set([...CAT_R,...extra])].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')+`<option value="__nova">+ Nova categoria…</option>`}
-  return Object.keys(GRUPOS).map(g=>{const ex=(S.cfg.cats||[]).filter(c=>c.grupo===g).map(c=>c.nome);return `<optgroup label="${GRUPOS[g].nome}">${[...CAT_D[g],...ex].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')}</optgroup>`}).join('')+`<option value="__nova">+ Nova categoria…</option>`}
+function catOptions(tipo,val){if(tipo==='receita'){const extra=(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome);return [...new Set([...CAT_R,...extra])].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')+`<option value="__nova" ${val==='__nova'?'selected':''}>+ Nova categoria…</option>`}
+  return Object.keys(GRUPOS).map(g=>{const ex=(S.cfg.cats||[]).filter(c=>c.grupo===g).map(c=>c.nome);return `<optgroup label="${GRUPOS[g].nome}">${[...CAT_D[g],...ex].map(c=>`<option ${c===val?'selected':''}>${esc(c)}</option>`).join('')}</optgroup>`}).join('')+`<option value="__nova" ${val==='__nova'?'selected':''}>+ Nova categoria…</option>`}
 const MAX_ANEXOS=5,MAX_DATA=950000;
 function comprimirFoto(file){return new Promise((ok,no)=>{const u=URL.createObjectURL(file),im=new Image();
   im.onerror=()=>{URL.revokeObjectURL(u);no(new Error('leitura'))};
@@ -457,7 +457,10 @@ async function saveTx(){const vrS=F.modo==='recorrente'&&F.valorVariavel===true;
   if(err){F.err=err;drawTxForm();return}
   if(F.tipo==='despesa'&&F.meio==='cartao'&&F.cartaoId==='__novo'){const cid=uid(),cd={nome:F.ncNome.trim(),titular:(F.ncTitular||'').trim(),limiteCents:parseMoney(F.ncLimite)||0,fecha:+F.ncFecha,venc:+F.ncVenc};S.cards=[...S.cards,{id:cid,...cd}];dirty();F.cartaoId=cid;await write(()=>store.put('cards',cid,cd))}
   let cat=F.categoria,grupo=null;
-  if(cat==='__nova'){cat=F.novaCat.trim();grupo=F.tipo==='despesa'?(F.novoGrupo||'nao'):'receita';const cats=[...(S.cfg.cats||[]),{nome:cat,grupo}];await write(()=>store.cfg({...S.cfg,cats}))}
+  if(cat==='__nova'){const nome=F.novaCat.trim(),igual=x=>x.toLowerCase()===nome.toLowerCase(),rec=F.tipo==='receita',custom=(S.cfg.cats||[]).filter(c=>rec?c.grupo==='receita':c.grupo!=='receita'),jaCustom=custom.find(c=>igual(c.nome));
+    let padrao=null,gp=null;if(rec)padrao=CAT_R.find(igual);else for(const g in CAT_D){const x=CAT_D[g].find(igual);if(x){padrao=x;gp=g}}
+    if(padrao){cat=padrao;grupo=rec?null:gp}else if(jaCustom){cat=jaCustom.nome;grupo=rec?null:jaCustom.grupo}
+    else{cat=nome;grupo=rec?'receita':(F.novoGrupo||'nao');const cats=[...(S.cfg.cats||[]),{nome:cat,grupo}];await write(()=>store.cfg(clean({...S.cfg,cats})))}}
   else if(F.tipo==='despesa'){const ex=(S.cfg.cats||[]).find(x=>x.nome===cat);grupo=ex?ex.grupo:null;if(!grupo)for(const g in CAT_D)if(CAT_D[g].includes(cat))grupo=g}
   const useCard=F.tipo==='despesa'&&F.meio==='cartao'&&F.cartaoId;
   const doc={tipo:F.tipo,descricao:F.descricao.trim(),modo:F.modo,valorCents:c,valorBase:F.modo==='parcelado'?F.valorBase:'total',data:F.data,categoria:cat,grupo,meio:F.tipo==='despesa'?F.meio:'pix',cartaoId:useCard?F.cartaoId:'',pagos:{...(F.pagos||{})},criadoEm:F.criadoEm||Date.now()};
