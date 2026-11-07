@@ -1,4 +1,4 @@
-const APP_VER=8;
+const APP_VER=9;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -205,7 +205,7 @@ function pagePainel(){
     ${saldoBox()}
     ${kpi('Entradas',s.in,`${brl(s.inPaid)} já recebidos`,spark(last6(x=>x.in),'var(--s-in)'))}
     ${kpi('Saídas',s.out,`${brl(s.outPaid)} já pagos`,spark(last6(x=>x.out),'var(--s-out)'))}
-    ${kpi('Dívidas totais',debt,S.debts.length?`${S.debts.filter(d=>d.saldoCents>0).length} abertas`:'Nenhuma cadastrada')}
+    ${projBox()}
   </div>
   <div class="grid g21">
     <section class="card glass land flexc"><div class="cardhead"><div><h2>Entradas e saídas</h2><small>Clique num mês para abrir. Barras claras são previsão.</small></div><div class="legend"><span><i style="background:var(--s-in)"></i>Entradas</span><span><i style="background:var(--s-out)"></i>Saídas</span></div></div>
@@ -234,7 +234,13 @@ function saldoAtual(){const b=S.cfg.saldoBase;if(!b)return null;let v=b.valorCen
 function saldoBox(){const a=saldoAtual(),attrs='role="button" tabindex="0" data-act="set-saldo" style="cursor:pointer"';
   if(a==null)return `<div class="kpi glass land feat" ${attrs}><div class="lab">Saldo atual</div><div class="val" style="font-size:19px">Informar saldo</div><div class="sub">Toque e digite quanto tem hoje nas contas</div></div>`;
   const pend=occs(CUR).filter(o=>!o.paid).reduce((x,o)=>x+(tipoOf(o)==='receita'?o.cents:-o.cents),0);
-  return `<div class="kpi glass land feat" ${attrs} title="Toque para ajustar"><div class="lab">Saldo atual</div><div class="val" data-count="${a}">${brl(a)}</div><div class="sub">Fim de ${MES[+CUR.slice(5)-1]}: <span style="white-space:nowrap">${brl(a+pend)}</span> · toque para ajustar</div></div>`}
+  return `<div class="kpi glass land feat" ${attrs} title="Toque para ajustar"><div class="lab">Saldo atual</div><div class="val" data-count="${a}">${brl(a)}</div><div class="sub">Hoje · toque para ajustar</div></div>`}
+function pendente(ate){let v=0;for(let k=CUR;k<=ate;k=addM(k,1))for(const o of occs(k))if(!o.paid)v+=tipoOf(o)==='receita'?o.cents:-o.cents;return v}
+function projBox(){const k=S.month,a=saldoAtual(),fim=`Fim de ${MES[+k.slice(5)-1]}`;
+  if(k<CUR){const s=sums(k);return kpi('Projetado',s.saldo,`${fim}: só o saldo do mês`)}
+  if(a==null){const s=sums(k);return kpi('Projetado',s.saldo,'Saldo do mês. Informe o Saldo atual para projetar a conta')}
+  const v=a+pendente(k),neg=v<0;
+  return `<div class="kpi glass land"><div class="lab">Projetado</div><div class="val" data-count="${v}" style="${neg?'color:var(--bad)':''}">${brl(v)}</div><div class="sub">${fim}, depois de tudo que falta entrar e sair</div></div>`}
 function saldoForm(){const a=saldoAtual();
   openDialog(mHead('Saldo atual')+`<form class="fm" id="sform" novalidate><div class="fld w"><label for="s_v">Quanto você tem hoje, somando as contas</label><input class="inp" id="s_v" inputmode="decimal" value="${a!=null?moneyInput(a):''}" placeholder="0,00" autocomplete="off"><span class="hint">Some o saldo das contas que você usa. Não conte limite de cheque especial nem de cartão. Se estiver negativo, use o sinal de menos.</span></div><p class="fld w hint">Daqui em diante, o app soma o que você marcar como recebido e desconta o que marcar como pago, inclusive faturas. Compra no crédito só sai do saldo quando a fatura é paga.</p><div class="err" id="s_e" hidden></div></form><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="saldo-save">Salvar saldo</button></div>`);$('#s_v').focus()}
 function faturasSection(){const k=S.month;
@@ -645,6 +651,6 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
   if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
-    navigator.serviceWorker.register('sw.js?v=8',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
+    navigator.serviceWorker.register('sw.js?v=9',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();

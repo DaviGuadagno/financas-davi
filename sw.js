@@ -1,5 +1,5 @@
-const V='fd-v8';
-const FILES=['./','index.html','app.css?v=8','app.js?v=8','firebase-bundle.js?v=8','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png'];
+const V='fd-v9';
+const FILES=['./','index.html','app.css?v=9','app.js?v=9','firebase-bundle.js?v=9','manifest.webmanifest','icon-192.png','icon-512.png','apple-touch-icon.png'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(V).then(c=>c.addAll(FILES)))});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==V).map(x=>caches.delete(x)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin)return;
