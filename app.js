@@ -1,4 +1,4 @@
-const APP_VER=7;
+const APP_VER=8;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -128,10 +128,10 @@ async function write(fn,ok){try{const w=Promise.resolve(fn());if(navigator.onLin
 const clean=o=>JSON.parse(JSON.stringify(o));
 
 /* ---------- ações sobre dados ---------- */
-const togglePaid=(tx,key,val)=>write(()=>store.patch('tx',tx.id,{pagos:{[key]:val}}),val?(tx.tipo==='receita'?'Marcado como recebido':'Marcado como pago'):'Desmarcado');
-async function payFatura(cardId,key){const list=occs(key).filter(o=>o.tx?.cartaoId===cardId&&!o.paid);for(const o of list){await write(()=>store.patch('tx',o.tx.id,{pagos:{[key]:true}}))}toast('Fatura marcada como paga')}
+const togglePaid=(tx,key,val)=>write(()=>store.patch('tx',tx.id,{pagos:{[key]:val},pagosEm:{[key]:Date.now()}}),val?(tx.tipo==='receita'?'Marcado como recebido':'Marcado como pago'):'Desmarcado');
+async function payFatura(cardId,key){const list=occs(key).filter(o=>o.tx?.cartaoId===cardId&&!o.paid);for(const o of list){await write(()=>store.patch('tx',o.tx.id,{pagos:{[key]:true},pagosEm:{[key]:Date.now()}}))}toast('Fatura marcada como paga')}
 async function saveDebtPayment(d,valor,data,novoSaldo){const txId=uid();
-  await write(()=>store.put('tx',txId,clean({tipo:'despesa',descricao:'Pagamento: '+d.credor,modo:'avista',valorCents:valor,data,categoria:'Pagamento de dívida',grupo:'fin',meio:'pix',pagos:{[data.slice(0,7)]:true},debtId:d.id,criadoEm:Date.now()})));
+  await write(()=>store.put('tx',txId,clean({tipo:'despesa',descricao:'Pagamento: '+d.credor,modo:'avista',valorCents:valor,data,categoria:'Pagamento de dívida',grupo:'fin',meio:'pix',pagos:{[data.slice(0,7)]:true},pagosEm:{[data.slice(0,7)]:Date.now()},debtId:d.id,criadoEm:Date.now()})));
   const pg=[...(d.pagamentos||[]),{txId,data,valorCents:valor,saldoAntes:d.saldoCents}];
   const patch={saldoCents:Math.max(0,novoSaldo),pagamentos:pg};
   if(d.parcelasRestantes!=null&&d.parcelaCents&&valor>=d.parcelaCents)patch.parcelasRestantes=Math.max(0,d.parcelasRestantes-1);
@@ -202,7 +202,7 @@ function pagePainel(){
     <div class="acts"><button class="btn" data-act="new-debt">${ic('plus')}Dívida</button><button class="btn pri" data-act="new-tx">${ic('plus')}Lançamento</button></div></div>
   ${showSteps?`<section class="card glass land"><div class="cardhead"><div><h2>Comece por aqui</h2><small>O painel está zerado. Cada passo destrava uma parte dele.</small></div></div><div class="steps">${steps.map((x,i)=>`<div class="step ${x[1]?'done':''}"><span class="stepn">Passo ${i+1}${x[1]?' · feito':''}</span><b>${x[0]}</b><p>${x[2]}</p><button class="btn sm ${x[1]?'':'pri'}" data-act="${x[4]}">${x[3]}</button></div>`).join('')}</div></section>`:''}
   <div class="grid g4">
-    ${kpi('Saldo do mês',s.saldo,s.in||s.out?(s.saldo>=0?'Sobra prevista':'Falta prevista'):'Sem lançamentos no mês',spark(last6(x=>x.saldo)),true)}
+    ${saldoBox()}
     ${kpi('Entradas',s.in,`${brl(s.inPaid)} já recebidos`,spark(last6(x=>x.in),'var(--s-in)'))}
     ${kpi('Saídas',s.out,`${brl(s.outPaid)} já pagos`,spark(last6(x=>x.out),'var(--s-out)'))}
     ${kpi('Dívidas totais',debt,S.debts.length?`${S.debts.filter(d=>d.saldoCents>0).length} abertas`:'Nenhuma cadastrada')}
@@ -228,6 +228,15 @@ function pagePainel(){
     <section class="card glass land"><div class="cardhead"><div><h2>Saída das dívidas</h2><small>Ordem pelos maiores juros</small></div><button class="btn sm" data-go="dividas">Abrir plano</button></div>
       ${S.debts.length?debtSummary(best):emptyBox('Nenhuma dívida cadastrada','Cadastre saldo, juros e parcela de cada uma para calcular a ordem e o prazo.',`<button class="btn sm pri" data-act="new-debt">Cadastrar dívida</button>`)}</section>
   </div>`}
+function saldoAtual(){const b=S.cfg.saldoBase;if(!b)return null;let v=b.valorCents;const lim=addM(CUR,12);
+  for(const t of S.tx){const pe=t.pagosEm||{};for(const o of occsOf(t,lim)){if(!o.paid)continue;const ts=pe[o.key];if(!(ts!=null?ts>=b.ts:o.date>b.data))continue;v+=t.tipo==='receita'?o.cents:-o.cents}}
+  return v}
+function saldoBox(){const a=saldoAtual(),attrs='role="button" tabindex="0" data-act="set-saldo" style="cursor:pointer"';
+  if(a==null)return `<div class="kpi glass land feat" ${attrs}><div class="lab">Saldo atual</div><div class="val" style="font-size:19px">Informar saldo</div><div class="sub">Toque e digite quanto tem hoje nas contas</div></div>`;
+  const pend=occs(CUR).filter(o=>!o.paid).reduce((x,o)=>x+(tipoOf(o)==='receita'?o.cents:-o.cents),0);
+  return `<div class="kpi glass land feat" ${attrs} title="Toque para ajustar"><div class="lab">Saldo atual</div><div class="val" data-count="${a}">${brl(a)}</div><div class="sub">Fim de ${MES[+CUR.slice(5)-1]}: <span style="white-space:nowrap">${brl(a+pend)}</span> · toque para ajustar</div></div>`}
+function saldoForm(){const a=saldoAtual();
+  openDialog(mHead('Saldo atual')+`<form class="fm" id="sform" novalidate><div class="fld w"><label for="s_v">Quanto você tem hoje, somando as contas</label><input class="inp" id="s_v" inputmode="decimal" value="${a!=null?moneyInput(a):''}" placeholder="0,00" autocomplete="off"><span class="hint">Some o saldo das contas que você usa. Não conte limite de cheque especial nem de cartão. Se estiver negativo, use o sinal de menos.</span></div><p class="fld w hint">Daqui em diante, o app soma o que você marcar como recebido e desconta o que marcar como pago, inclusive faturas. Compra no crédito só sai do saldo quando a fatura é paga.</p><div class="err" id="s_e" hidden></div></form><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="saldo-save">Salvar saldo</button></div>`);$('#s_v').focus()}
 function faturasSection(){const k=S.month;
   if(!S.cards.length)return allLoaded()?`<section class="card glass land"><div class="cardhead"><div><h2>Faturas dos cartões</h2><small>Cadastre seus cartões para acompanhar cada fatura.</small></div><button class="btn sm pri" data-act="new-card">${ic('plus')}Cartão</button></div></section>`:'';
   const dados=S.cards.map(c=>{const L=occs(k).filter(o=>o.tx?.cartaoId===c.id),tot=L.reduce((a,o)=>a+o.cents,0),pend=L.filter(o=>!o.paid).reduce((a,o)=>a+o.cents,0),venc=L[0]?.date||clampDay(k,c.venc),next=occs(addM(k,1)).filter(o=>o.tx?.cartaoId===c.id).reduce((a,o)=>a+o.cents,0);return{c,tot,pend,venc,next}});
@@ -464,7 +473,7 @@ async function saveTx(){const vrS=F.modo==='recorrente'&&F.valorVariavel===true;
     else{cat=nome;grupo=rec?'receita':(F.novoGrupo||'nao');const cats=[...(S.cfg.cats||[]),{nome:cat,grupo}];await write(()=>store.cfg(clean({...S.cfg,cats})))}}
   else if(F.tipo==='despesa'){const ex=(S.cfg.cats||[]).find(x=>x.nome===cat);grupo=ex?ex.grupo:null;if(!grupo)for(const g in CAT_D)if(CAT_D[g].includes(cat))grupo=g}
   const useCard=F.tipo==='despesa'&&F.meio==='cartao'&&F.cartaoId;
-  const doc={tipo:F.tipo,descricao:F.descricao.trim(),modo:F.modo,valorCents:c,valorBase:F.modo==='parcelado'?F.valorBase:'total',data:F.data,categoria:cat,grupo,meio:F.tipo==='despesa'?F.meio:'pix',cartaoId:useCard?F.cartaoId:'',pagos:{...(F.pagos||{})},criadoEm:F.criadoEm||Date.now()};
+  const doc={tipo:F.tipo,descricao:F.descricao.trim(),modo:F.modo,valorCents:c,valorBase:F.modo==='parcelado'?F.valorBase:'total',data:F.data,categoria:cat,grupo,meio:F.tipo==='despesa'?F.meio:'pix',cartaoId:useCard?F.cartaoId:'',pagos:{...(F.pagos||{})},pagosEm:{...(F.pagosEm||{})},criadoEm:F.criadoEm||Date.now()};
   if(F.modo==='parcelado'){doc.parcelas=+F.parcelas;doc.parcelaInicial=+F.parcelaInicial}
   if(F.modo==='recorrente'&&F.fim)doc.fim=F.fim;
   const fk=firstDate(doc).slice(0,7);
@@ -472,7 +481,7 @@ async function saveTx(){const vrS=F.modo==='recorrente'&&F.valorVariavel===true;
     if(F.id&&!F.valorVariavelAntes){const old=S.tx.find(t=>t.id===F.id);if(old)for(const k in (old.pagos||{}))if(old.pagos[k]===true&&doc.valores[k]==null)doc.valores[k]=old.valorCents}
     const vm=parseMoney(F.valorMes);if(!F.id&&vm!=null)doc.valores[fk]=vm}
   else if(F.valores)doc.valores=F.valores;
-  if(!useCard&&(F.modo==='avista'||!F.id)){if(F.jaPago)doc.pagos[fk]=true;else delete doc.pagos[fk]}
+  if(!useCard&&(F.modo==='avista'||!F.id)){if(F.jaPago){if(!(F.pagos||{})[fk])doc.pagosEm[fk]=Date.now();doc.pagos[fk]=true}else delete doc.pagos[fk]}
   const id=F.id||uid(),go2=fk,novos=F.novosAnexos||[],remov=F.anexosRemovidos||[];
   doc.anexos=[...(F.anexos||[]).filter(a=>!remov.includes(a.id)),...novos.map(a=>({id:a.id,w:a.w,h:a.h,criadoEm:Date.now()}))];
   closeDialog();if(novos.length)toast('Salvando a foto…');
@@ -537,6 +546,8 @@ document.addEventListener('click',async e=>{
     case 'ver-anexo':if(tx?.anexos?.length){const L=tx.anexos;if(L.length===1)verAnexo(L[0].id,1,1);else openDialog(mHead('Fotos anexadas')+`<div class="mf" style="justify-content:flex-start;padding-top:14px">${L.map((x,i)=>`<button class="btn sm" data-act="ver-um" data-a="${x.id}" data-n="${i+1}" data-t="${L.length}">Foto ${i+1}</button>`).join('')}</div>`)}break;
     case 'ver-um':verAnexo(a.dataset.a,+a.dataset.n,+a.dataset.t);break;
     case 'anexo-rm':{if(!F)break;syncF();const i=a.dataset.id2;if((F.novosAnexos||[]).some(x=>x.id===i))F.novosAnexos=F.novosAnexos.filter(x=>x.id!==i);else F.anexosRemovidos=[...(F.anexosRemovidos||[]),i];drawTxForm();break}
+    case 'set-saldo':saldoForm();break;
+    case 'saldo-save':{const c=parseMoney($('#s_v').value);if(c==null){const er=$('#s_e');er.textContent='Digite o valor, mesmo que seja 0.';er.hidden=false;break}closeDialog();write(()=>store.cfg(clean({...S.cfg,saldoBase:{valorCents:c,data:TODAY,ts:Date.now()}})),'Saldo salvo');break}
     case 'set-val':if(tx)valForm(tx,a.dataset.k);break;
     case 'val-save':{const c=parseMoney($('#v_c').value);if(c==null||c<0){const er=$('#v_e');er.textContent='Digite o valor.';er.hidden=false;break}const k=a.dataset.k;closeDialog();write(()=>store.patch('tx',id,{valores:{[k]:c}}),'Valor salvo');break}
     case 'mark':if(tx)togglePaid(tx,a.dataset.k,true);break;
@@ -634,6 +645,6 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
   if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
-    navigator.serviceWorker.register('sw.js?v=7',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
+    navigator.serviceWorker.register('sw.js?v=8',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();
