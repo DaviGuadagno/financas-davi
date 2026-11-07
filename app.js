@@ -1,3 +1,4 @@
+const APP_VER=7;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -356,7 +357,7 @@ function renderSide(){const debt=totalDebt(),acc=ls.get('fd_accent','menta'),at=
    <div class="grow"></div>
    <div class="mini"><small>Dívidas totais</small><b>${brl(debt)}</b><small>${S.debts.length?`${S.debts.filter(d=>d.saldoCents>0).length} abertas`:'Nada cadastrado'}</small></div>
    <div class="sidefoot"><div class="swatches" role="group" aria-label="Cor de destaque">${[['menta','#3fc9a0'],['floresta','#17603f'],['oceano','#3f78e0'],['ameixa','#7f5fc4'],['brasa','#e0512f']].map(([n,c])=>`<button class="sw ${acc===n?'on':''}" style="background:${c}" data-act="accent" data-v="${n}" aria-label="${n}" title="${n}"></button>`).join('')}</div>
-   <button class="nav" data-act="look" title="Claro ou escuro">${ic('moon')}<span>Claro / escuro</span></button><button class="nav" data-act2="backup" title="Baixar backup">${ic('down')}<span>Baixar backup</span></button><button class="nav" data-act2="sair" title="Sair">${ic('out')}<span>Sair</span></button></div>`;
+   <button class="nav" data-act="look" title="Claro ou escuro">${ic('moon')}<span>Claro / escuro</span></button><button class="nav" data-act2="backup" title="Baixar backup">${ic('down')}<span>Baixar backup</span></button><button class="nav" data-act2="sair" title="Sair">${ic('out')}<span>Sair</span></button><small style="color:var(--fg3);font-size:11px;padding:4px 11px">Versão ${APP_VER}</small></div>`;
   $('#bottom').innerHTML=PAGES.map(([id,n,i])=>`<button class="${S.page===id?'on':''}" data-go="${id}">${ic(i)}${n.split(' ').slice(-1)[0]==='vai'?'Gastos':n.split(' ')[0]}</button>`).join('')}
 function topbar(){const at=urgentes(attention()).length,dn=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
   const nome=PAGES.find(p=>p[0]===S.page)?.[1];
@@ -364,7 +365,7 @@ function topbar(){const at=urgentes(attention()).length,dn=new Date().toLocaleDa
    <div class="monthsw"><button class="iconbtn" data-act="prev" aria-label="Mês anterior">${ic('left')}</button><b>${mLong(S.month).replace(' de ',' ')}</b><button class="iconbtn" data-act="next" aria-label="Próximo mês">${ic('right')}</button></div>
    ${S.month!==CUR?`<button class="btn sm" data-act="today">Hoje</button>`:''}
    <button class="bell" data-go="painel" aria-label="${at} pendências">${ic('bell')}${at?`<span class="badge">${at}</span>`:''}</button>
-   <button class="btn pri newbtn" data-act="new-tx">${ic('plus')}Novo</button><div class="avatar" aria-hidden="true">DG</div><button class="iconbtn mobout" data-act="look" aria-label="Claro ou escuro">${ic('moon')}</button><button class="iconbtn mobout" data-act2="backup" aria-label="Baixar backup">${ic('down')}</button><button class="iconbtn mobout" data-act2="sair" aria-label="Sair">${ic('out')}</button></div>
+   <button class="btn pri newbtn" data-act="new-tx">${ic('plus')}Novo</button><div class="avatar" aria-hidden="true">DG</div><button class="iconbtn mobout" data-act="look" aria-label="Claro ou escuro">${ic('moon')}</button><button class="iconbtn mobout" data-act2="backup" aria-label="Baixar backup">${ic('down')}</button><button class="iconbtn mobout" data-act2="sair" aria-label="Sair">${ic('out')}</button><small class="mobout" style="color:var(--fg3);font-size:11px;align-self:center">v${APP_VER}</small></div>
    
    ${S.unreach?`<div class="banner">${S.dbErr==='permission-denied'?'Sua conta não tem permissão para abrir estes dados.':'Ainda não consegui carregar seus dados.'} <small>(${esc(S.dbErr||'sem resposta do banco')})</small> <button class="btn sm" data-act2="retry">Tentar de novo</button></div>`:''}`}
 function render(animate=false){const act=document.activeElement,fid=act&&act.id&&main.contains(act)?act.id:null,caret=fid&&act.selectionStart;
@@ -631,6 +632,8 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   document.documentElement.dataset.accent=ls.get('fd_accent','menta');
   if(ls.get('fd_rail',false))$('#app').classList.add('rail');
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
-  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(e=>console.warn(e));
+  if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
+    navigator.serviceWorker.register('sw.js?v=7',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();
