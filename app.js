@@ -1,4 +1,4 @@
-const APP_VER=10;
+const APP_VER=11;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -275,7 +275,7 @@ function txListHtml(){let L=occs(S.month).slice().sort((a,b)=>a.date.localeCompa
   const ent=L.filter(o=>tipoOf(o)==='receita').reduce((a,o)=>a+o.cents,0),sai=L.filter(o=>tipoOf(o)!=='receita').reduce((a,o)=>a+o.cents,0);
   return `<div class="row hd"><span>Vence</span><span>Descrição</span><span>Forma</span><span class="money" style="font-weight:400">Valor</span><span style="text-align:right">Situação</span></div><div class="rows">${L.map(txRow).join('')}</div><div class="legend" style="justify-content:flex-end;padding:11px 8px 0"><span>Entradas <b>${brl(ent)}</b></span><span>Saídas <b>${brl(sai)}</b></span><span>${L.length} itens</span></div>`}
 function pageLanc(){const s=sums(S.month),cats=[...new Set(occs(S.month).map(o=>o.debt?'Pagamento de dívida':o.tx.categoria))].sort();
-  return `<div class="head land"><div><h1>Lançamentos</h1><p>${mLong(S.month)}: parcelas e recorrências entram sozinhas em cada mês.</p></div><div class="acts"><button class="btn" data-act="new-rec">${ic('plus')}Receita</button><button class="btn pri" data-act="new-desp">${ic('plus')}Despesa</button></div></div>
+  return `<div class="head land"><div><h1>Lançamentos</h1><p>${mLong(S.month)}: parcelas e recorrências entram sozinhas em cada mês.</p></div><div class="acts"><button class="btn" data-act="import">${ic('up')}Importar extrato</button><button class="btn" data-act="new-rec">${ic('plus')}Receita</button><button class="btn pri" data-act="new-desp">${ic('plus')}Despesa</button></div></div>
   <div class="grid g3">${kpi('Entradas',s.in,`${brl(s.inPaid)} recebidos`)}${kpi('Saídas',s.out,`${brl(s.outPaid)} pagos`)}${kpi('Saldo',s.saldo,s.saldo>=0?'Sobra':'Falta')}</div>
   <section class="card glass land"><div class="filters"><div class="seg" role="group" aria-label="Tipo">${[['todos','Todos'],['despesa','Despesas'],['receita','Receitas']].map(([v,n])=>`<button class="${S.fTipo===v?'on':''}" data-act="f-tipo" data-v="${v}">${n}</button>`).join('')}</div>
     <select class="sel" id="f-cat" aria-label="Categoria"><option value="">Todas as categorias</option>${cats.map(c=>`<option ${S.fCat===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
@@ -534,6 +534,86 @@ function faturaAsk(cardId,key){const c=S.cards.find(x=>x.id===cardId),val=occs(k
 function unpayAsk(cardId,key){const c=S.cards.find(x=>x.id===cardId),L=occs(key).filter(o=>o.tx?.cartaoId===cardId&&o.paid),val=L.reduce((a,o)=>a+o.cents,0);
   openDialog(mHead('Fatura '+esc(c?.nome||''))+`<div class="fm"><p class="fld w">Desfazer o pagamento da fatura de ${mShort(key)}: <b>${brl(val)}</b>?</p><p class="fld w hint">A fatura volta a ficar em aberto e o valor volta para o Saldo atual. As compras não são apagadas.</p></div><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="unpay-ok" data-card="${cardId}" data-k="${key}">Desfazer pagamento</button></div>`)}
 async function unpayFatura(cardId,key){const list=occs(key).filter(o=>o.tx?.cartaoId===cardId&&o.paid);for(const o of list){await write(()=>store.patch('tx',o.tx.id,{pagos:{[key]:false}}))}toast('Pagamento da fatura desfeito')}
+/* ---------- importar extrato ---------- */
+let IMP=null,IMP_T='';
+const IMP_RULES=[
+  [/d[ií]zimo/i,'Dízimo','essencial','despesa'],
+  [/resgate/i,'Resgate de investimento','receita','receita'],
+  [/^\s*investimento/i,'Investimento','nao'],
+  [/sal[aá]rio/i,'Salário'],
+  [/fatura/i,'Fatura de cartão','fin'],
+  [/ifood|rappi|delivery/i,'Delivery'],
+  [/a[cç]a[ií]|madero|mc ?donald|pizza|subway|burg(u)?er|restaurante|lanchonete|padaria/i,'Restaurantes'],
+  [/guanabara|prezunic|mundial|supermarket|mercado|amig[aã]o|swift|chocolate|hortifruti|assa[ií]/i,'Mercado','essencial'],
+  [/alimenta/i,'Alimentação'],
+  [/gasolina|combust|uber|99 ?pop|estacionamento|ped[aá]gio/i,'Transporte'],
+  [/farm[aá]cia|drogaria|m[eé]dico|exame/i,'Saúde'],
+  [/casamento/i,'Casamento',null,null,'Ajuda Casamento'],
+  [/\biof\b/i,'IOF'],
+  [/juros|multa/i,'Juros e multas'],
+  [/roupa|vestido|t[eê]nis/i,'Roupas','essencial'],
+  [/telefone|celular/i,'Compras'],
+  [/lazer|poker|cadeira|cinema|show/i,'Lazer'],
+  [/barbeiro|c[ií]lios|sal[aã]o|unha|manicure/i,'Cuidados pessoais','nao']];
+function impCat(desc,tipo){for(const [re,c,g,force,crec] of IMP_RULES){if(!re.test(desc))continue;if(force&&force!==tipo)continue;
+    if(tipo==='receita'){if(crec)return{cat:crec,grupo:'receita'};if(g==='receita'||c==='Salário')return{cat:c,grupo:'receita'};continue}
+    if(g==='receita')continue;return{cat:c,grupo:g||null}}
+  return tipo==='receita'?{cat:'Outras receitas',grupo:'receita'}:{cat:'Outros',grupo:'nao'}}
+function impGrupo(cat,fallback){const ex=(S.cfg.cats||[]).find(x=>x.nome===cat&&x.grupo!=='receita');if(ex)return ex.grupo;for(const g in CAT_D)if(CAT_D[g].includes(cat))return g;return fallback||'nao'}
+function impDate(s){const m=String(s||'').trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);if(!m)return null;let y=m[3]?+m[3]:+CUR.slice(0,4);if(y<100)y+=2000;const d=`${y}-${pad(+m[2])}-${pad(+m[1])}`;return isNaN(Date.parse(d))?null:d}
+const impNorm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim();
+function impParse(txt){const out=[],bad=[];
+  txt.split(/\r?\n/).forEach((l,n)=>{if(!l.trim())return;let p=l.split('\t');if(p.length<3)p=l.split(/\s*[;|]\s*/);p=p.map(x=>x.trim());
+    const desc=p[0],c=parseMoney(p[1]),data=impDate(p[2]);if(!desc||c==null||!c||!data){bad.push(n+1);return}
+    const forma=impNorm(p[3]),tipoTx=impNorm(p[4]),pago=/^s/.test(impNorm(p[5]));
+    let meio='pix',cartaoId='';if(/credito|cartao/.test(forma)){meio='cartao';const nm=[...S.cards].sort((a,b)=>b.nome.length-a.nome.length).find(k=>forma.includes(impNorm(k.nome)));cartaoId=nm?nm.id:''}
+    else if(/debito/.test(forma))meio='debito';else if(/dinheiro/.test(forma))meio='dinheiro';else if(/boleto/.test(forma))meio='boleto';
+    let modo='avista',parcelaInicial=null,parcelas=null;const pm=tipoTx.match(/parcel\w*\s*(\d+)\s*\/\s*(\d+)/);if(pm){modo='parcelado';parcelaInicial=+pm[1];parcelas=+pm[2]}else if(/recorr/.test(tipoTx))modo='recorrente';
+    const r={n:n+1,desc,cents:Math.abs(c),data,meio,cartaoId,modo,parcelaInicial,parcelas,pago:meio==='cartao'?false:pago,tipo:c<0?'despesa':'receita',on:true};
+    const forced=IMP_RULES.find(x=>x[3]&&x[0].test(desc));if(forced)r.tipo=forced[3];
+    out.push(r)});
+  // pares que se anulam (mesma data, mesmo nome, valores opostos)
+  out.forEach((r,i)=>{if(r.par!=null)return;const j=out.findIndex((x,k)=>k!==i&&x.par==null&&x.data===r.data&&x.cents===r.cents&&x.tipo!==r.tipo&&impNorm(x.desc)===impNorm(r.desc));if(j>=0){r.par=j;out[j].par=i}});
+  out.forEach(r=>{const k=impCat(r.desc,r.tipo);r.cat=k.cat;r.grupo=k.grupo});
+  impMatchAll(out);return{rows:out,bad}}
+function impFaturaTot(cardId,key){return occs(key).filter(o=>o.tx?.cartaoId===cardId)}
+const impWords=s=>impNorm(s).split(/[^a-z0-9]+/).filter(w=>w.length>=4);
+function impMatchAll(rows){const cand=[];
+  rows.forEach((r,ri)=>{r.acao='novo';r.alvo=null;r.on=r.par==null;if(r.par!=null){r.acao='anula';return}
+    const k=r.data.slice(0,7);
+    if(r.tipo==='despesa'&&/fatura/i.test(r.desc)){for(const kk of [k,addM(k,1),addM(k,-1)])for(const c of S.cards){const L=impFaturaTot(c.id,kk),tot=L.reduce((a,o)=>a+o.cents,0);if(tot&&Math.abs(tot-r.cents)<=1&&!r.alvo){r.alvo={card:c.id,key:kk,nome:c.nome};if(L.every(o=>o.paid)){r.acao='ja';r.on=false}else r.acao='payfat'}}if(r.alvo)return}
+    if(r.meio==='cartao')return;const W=impWords(r.desc);
+    for(const kk of [k,addM(k,-1),addM(k,1)])for(const o of occs(kk)){if(o.debt||!o.tx||o.tx.cartaoId||o.tx.tipo!==r.tipo)continue;
+      const dd=Math.abs((Date.parse(o.date)-Date.parse(r.data))/864e5),dv=Math.abs(o.cents-r.cents),sim=impWords(o.tx.descricao).some(w=>W.includes(w));
+      if(dd>5||dv>10||(dv>0&&!sim))continue;cand.push({ri,o,sc:(sim?0:1000)+dv*10+dd})}});
+  cand.sort((a,b)=>a.sc-b.sc);const used=new Set();
+  for(const c of cand){const r=rows[c.ri],id=c.o.tx.id+'|'+c.o.key;if(r.alvo||used.has(id))continue;used.add(id);
+    r.alvo={id:c.o.tx.id,key:c.o.key,cents:c.o.cents,desc:c.o.tx.descricao};if(c.o.paid&&c.o.cents===r.cents){r.acao='ja';r.on=false}else r.acao='pagar'}}
+function impForm(){IMP=null;openDialog(mHead('Importar extrato')+`<div class="fm"><div class="fld w"><label for="imp_t">Cole as linhas do extrato</label><textarea id="imp_t" rows="9" style="width:100%;font:13px ui-monospace,monospace;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--glass-2);color:var(--fg)" placeholder="Mercado	-217,02	09/11/2026	Pix	À vista	Sim"></textarea><span class="hint">Uma linha por lançamento: Descrição · Valor (negativo = saída) · Data · Forma · Tipo · Pago? Pode copiar direto da planilha (colunas separadas por tab) ou separar com ; ou |.</span><span class="hint" id="imp_e" hidden style="color:var(--bad)"></span></div></div><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="imp-parse">Ver prévia</button></div>`)}
+const IMP_LAB={novo:['Novo',''],pagar:['Já no app · marcar pago','warn'],payfat:['Fatura no app · marcar paga','warn'],ja:['Já no app e pago','good'],anula:['Se anula com outra linha','']};
+function impCatSel(r,i){if(r.acao!=='novo')return '';const opts=r.tipo==='receita'?[...new Set([...CAT_R,...(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome),r.cat])]:[...new Set([...Object.values(CAT_D).flat(),...(S.cfg.cats||[]).filter(c=>c.grupo!=='receita').map(c=>c.nome),r.cat])];
+  return `<select data-imp-cat="${i}" style="margin-left:auto;max-width:170px;font-size:12px;padding:3px 6px;border-radius:8px;border:1px solid var(--line);background:var(--glass-2);color:var(--fg)" ${r.acao!=='novo'?'disabled':''}>${opts.sort((a,b)=>a.localeCompare(b,'pt')).map(c=>`<option ${c===r.cat?'selected':''}>${esc(c)}</option>`).join('')}</select>`}
+function impPreview(){const R=IMP.rows,sel=R.filter(r=>r.on),nn=sel.filter(r=>r.acao==='novo'),inn=sel.filter(r=>r.tipo==='receita').reduce((a,r)=>a+r.cents,0),out=sel.filter(r=>r.tipo==='despesa').reduce((a,r)=>a+r.cents,0);
+  const d=$('#modal dialog');if(d)d.style.width='min(760px,calc(100vw - 24px))';
+  const body=R.map((r,i)=>{const [lab,tone]=IMP_LAB[r.acao];const alvo=r.acao==='pagar'?` ${esc(r.alvo.desc)}${r.alvo.cents!==r.cents?': '+brl(r.alvo.cents)+' → '+brl(r.cents):''}`:r.acao==='payfat'||(r.acao==='ja'&&r.alvo?.card)?` ${esc(r.alvo.nome)}`:'';
+    return `<div class="impr" style="${r.on?'':'opacity:.5'}"><input type="checkbox" data-act="imp-tog" data-i="${i}" ${r.on?'checked':''} aria-label="Importar linha ${r.n}"><div class="impd"><b>${esc(r.desc)}</b><small>${dBr(r.data)} · ${MEIOS[r.meio]}${r.cartaoId?' '+esc(S.cards.find(c=>c.id===r.cartaoId)?.nome||''):''}${r.modo==='parcelado'?` · ${r.parcelaInicial}/${r.parcelas}`:r.modo==='recorrente'?' · recorrente':''}</small></div><button class="btn sm impv" data-act="imp-flip" data-i="${i}" title="Trocar entrada/saída" style="color:${r.tipo==='receita'?'var(--good)':'var(--bad)'}">${r.tipo==='receita'?'+':'−'}${brl(r.cents)}</button><div class="impm"><span class="chip sm ${tone}">${lab}</span><small>${alvo}</small>${impCatSel(r,i)}</div></div>`}).join('');
+  d.innerHTML=mHead('Prévia da importação')+`<div style="padding:10px 19px 4px;font-size:14px;line-height:1.45">${sel.length} de ${R.length} linhas marcadas: <b>${nn.length} novos</b> e ${sel.length-nn.length} que já estão no app (só marca como pago).<br>Entradas <b style="color:var(--good)">${brl(inn)}</b> · Saídas <b style="color:var(--bad)">${brl(out)}</b>${IMP.bad.length?`<br><span style="color:var(--bad)">Linhas ignoradas por erro de formato: ${IMP.bad.join(', ')}.</span>`:''}<div class="hint" style="margin-top:6px">Toque no valor para trocar entrada/saída. Desmarque o que não quer importar. "Já no app e pago" e "Se anula" vêm desmarcados.</div></div><div style="padding:0 19px 8px">${body}</div><div class="mf" style="position:sticky;bottom:0;background:var(--modal)"><button class="btn" data-act="import">Voltar</button><button class="btn pri" data-act="imp-go" ${sel.length?'':'disabled'}>Importar ${sel.length} linhas</button></div>`}
+const impTs=d=>{const [y,m,dd]=d.split('-').map(Number);return new Date(y,m-1,dd,12).getTime()};
+async function impRun(){const sel=IMP.rows.filter(r=>r.on);closeDialog();toast('Importando…');let n=0,p=0;
+  const novos=[];for(const r of sel)if(r.acao==='novo'&&!CAT_R.includes(r.cat)&&!Object.values(CAT_D).flat().includes(r.cat)&&!(S.cfg.cats||[]).some(c=>c.nome===r.cat&&(r.tipo==='receita')===(c.grupo==='receita'))&&!novos.some(c=>c.nome===r.cat))novos.push({nome:r.cat,grupo:r.tipo==='receita'?'receita':(r.grupo||'nao')});
+  if(novos.length)await write(()=>store.cfg(clean({...S.cfg,cats:[...(S.cfg.cats||[]),...novos]})));
+  for(const r of sel){const ts=impTs(r.data);
+    if(r.acao==='novo'){const grupo=r.tipo==='receita'?null:impGrupo(r.cat,r.grupo);
+      const doc={tipo:r.tipo,descricao:r.desc,modo:r.modo,valorCents:r.cents,valorBase:r.modo==='parcelado'?'parcela':'total',data:r.data,categoria:r.cat,grupo,meio:r.tipo==='despesa'?r.meio:'pix',cartaoId:r.tipo==='despesa'?r.cartaoId:'',pagos:{},pagosEm:{},criadoEm:Date.now(),importado:true};
+      if(r.modo==='parcelado'){doc.parcelas=r.parcelas;doc.parcelaInicial=r.parcelaInicial}
+      if(r.pago&&!doc.cartaoId){const key=occsOf({...doc,id:'x'},CUR)[0]?.key||r.data.slice(0,7);doc.pagos[key]=true;doc.pagosEm[key]=ts}
+      await write(()=>store.put('tx',uid(),clean(doc)));n++}
+    else if(r.acao==='pagar'){const t=S.tx.find(x=>x.id===r.alvo.id);if(!t)continue;const k=r.alvo.key,ch={pagos:{[k]:true},pagosEm:{[k]:ts}};
+      if(r.alvo.cents!==r.cents){if(t.modo==='avista')ch.valorCents=r.cents;else if(t.modo==='recorrente'&&t.valorVariavel)ch.valores={[k]:r.cents}}
+      await write(()=>store.patch('tx',t.id,ch));p++}
+    else if(r.acao==='payfat'){for(const o of impFaturaTot(r.alvo.card,r.alvo.key).filter(o=>!o.paid))await write(()=>store.patch('tx',o.tx.id,{pagos:{[r.alvo.key]:true},pagosEm:{[r.alvo.key]:ts}}));p++}}
+  IMP=null;toast(`${n} lançamentos importados${p?`, ${p} marcados como pagos`:''}`)}
+
 /* ---------- eventos ---------- */
 document.addEventListener('click',async e=>{
   const go_=e.target.closest('[data-go]');if(go_){go(go_.dataset.go);return}
@@ -574,11 +654,17 @@ document.addEventListener('click',async e=>{
     case 'card-save':{const f=$('#cardform'),g=n=>f.elements[n].value.trim(),fe=+g('fecha'),ve=+g('venc'),er=$('#c_e');if(!g('nome')||!(fe>=1&&fe<=31)||!(ve>=1&&ve<=31)){er.textContent='Preencha nome, fechamento e vencimento (dias de 1 a 31).';er.hidden=false;break}const d={nome:g('nome'),titular:g('titular'),limiteCents:parseMoney(g('limite'))||0,fecha:fe,venc:ve};const i=id||uid();closeDialog();write(()=>store.put('cards',i,d),'Cartão salvo');break}
     case 'card-del':if(a.dataset.sure){const i=id;closeDialog();write(()=>store.del('cards',i),'Cartão excluído')}else{a.dataset.sure='1';a.textContent='Compras voltam para a data original. Confirmar'}break;
     case 'ask-fatura':faturaAsk(a.dataset.card,a.dataset.k);break;
+    case 'import':impForm();if(IMP_T)$('#imp_t').value=IMP_T;break;
+    case 'imp-parse':{const t=$('#imp_t').value;IMP_T=t;const r=impParse(t);if(!r.rows.length){const er=$('#imp_e');er.textContent='Não reconheci nenhuma linha. Confira o formato.';er.hidden=false;break}IMP=r;impPreview();break}
+    case 'imp-tog':IMP.rows[+a.dataset.i].on=a.checked;impPreview();break;
+    case 'imp-flip':{const r=IMP.rows[+a.dataset.i];r.tipo=r.tipo==='receita'?'despesa':'receita';const k=impCat(r.desc,r.tipo);r.cat=k.cat;r.grupo=k.grupo;if(r.par!=null){IMP.rows[r.par].par=null;r.par=null}impMatchAll(IMP.rows);impPreview();break}
+    case 'imp-go':impRun();break;
     case 'ask-unpay':unpayAsk(a.dataset.card,a.dataset.k);break;
     case 'unpay-ok':{const c=a.dataset.card,k=a.dataset.k;closeDialog();unpayFatura(c,k);break}
     case 'fatura-ok':{const c=a.dataset.card,k=a.dataset.k;closeDialog();payFatura(c,k);break}
     case 'day':S.day=a.dataset.d;render(false);break;
   }});
+document.addEventListener('change',e=>{const c=e.target.closest('[data-imp-cat]');if(c&&IMP){const r=IMP.rows[+c.dataset.impCat];r.cat=c.value;r.grupo=null}});
 document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[role=button][data-act]')){e.preventDefault();e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))}});
 function syncF(){if(!F)return;$$('#txf [data-f]').forEach(el=>applyField(el))}
 function applyField(el){const f=el.dataset.f;if(el.type==='checkbox')F[f]=el.checked;else if(f==='pagamento'){F.meio=el.value;if(el.value==='cartao'){if(!F.cartaoId)F.cartaoId=S.cards.length===1?S.cards[0].id:(S.cards.length?'':'__novo')}else F.cartaoId=''}else F[f]=el.value}
@@ -656,6 +742,6 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
   if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
-    navigator.serviceWorker.register('sw.js?v=10',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
+    navigator.serviceWorker.register('sw.js?v=11',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();
