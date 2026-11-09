@@ -1,4 +1,4 @@
-const APP_VER=9;
+const APP_VER=10;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -248,7 +248,7 @@ function faturasSection(){const k=S.month;
   const dados=S.cards.map(c=>{const L=occs(k).filter(o=>o.tx?.cartaoId===c.id),tot=L.reduce((a,o)=>a+o.cents,0),pend=L.filter(o=>!o.paid).reduce((a,o)=>a+o.cents,0),venc=L[0]?.date||clampDay(k,c.venc),next=occs(addM(k,1)).filter(o=>o.tx?.cartaoId===c.id).reduce((a,o)=>a+o.cents,0);return{c,tot,pend,venc,next}});
   const total=dados.reduce((a,d)=>a+d.pend,0);
   return `<section class="card glass land"><div class="cardhead"><div><h2>Faturas dos cartões</h2><small>${mLong(k)} · ${brl(total)} em aberto</small></div><button class="btn sm" data-go="cartoes">Ver compras</button></div><div class="grid g3">${dados.map(({c,tot,pend,venc,next})=>{const st=!tot?'<span class="chip sm">Sem compras</span>':!pend?'<span class="chip sm good">Paga</span>':venc<TODAY?'<span class="chip sm bad">Atrasada</span>':'<span class="chip sm warn">Em aberto</span>';
-    return `<div class="ms"><div class="legend" style="justify-content:space-between;align-items:center"><b style="font-size:14px">${esc(c.nome)}</b>${st}</div><div class="big" style="font-size:22px;margin:6px 0 2px">${brl(tot)}</div><span>Vence ${dBr(venc)}${c.titular?' · '+esc(c.titular):''}</span><br><span>Próxima: ${brl(next)}</span>${pend?`<button class="btn sm pri" style="display:flex;width:100%;margin-top:8px" data-act="ask-fatura" data-card="${c.id}" data-k="${k}">Pagar ${brl(pend)}</button>`:''}</div>`}).join('')}</div></section>`}
+    return `<div class="ms"><div class="legend" style="justify-content:space-between;align-items:center"><b style="font-size:14px">${esc(c.nome)}</b>${st}</div><div class="big" style="font-size:22px;margin:6px 0 2px">${brl(tot)}</div><span>Vence ${dBr(venc)}${c.titular?' · '+esc(c.titular):''}</span><br><span>Próxima: ${brl(next)}</span>${pend?`<button class="btn sm pri" style="display:flex;width:100%;margin-top:8px" data-act="ask-fatura" data-card="${c.id}" data-k="${k}">Pagar ${brl(pend)}</button>`:tot?`<button class="btn sm" style="display:flex;width:100%;margin-top:8px" data-act="ask-unpay" data-card="${c.id}" data-k="${k}">Desfazer pagamento</button>`:''}</div>`}).join('')}</div></section>`}
 function debtSummary(best){const list=S.debts.filter(d=>d.saldoCents>0).sort((a,b)=>(best.payoff[a.id]||999)-(best.payoff[b.id]||999)||(b.jurosMes||0)-(a.jurosMes||0)).slice(0,5);
   if(!list.length)return emptyBox('Dívidas zeradas','Próxima etapa: reserva de emergência.');
   return list.map((d,i)=>`<div class="item"><span class="tag ${d.situacao==='atrasada'?'bad':''}">${i+1}</span><div class="tx"><b>${esc(d.credor)}</b><small>${d.jurosMes!=null?String(d.jurosMes).replace('.',',')+'% a.m.':'juros não informados'}${best.payoff[d.id]?` · quita em ${mShort(addM(CUR,best.payoff[d.id]))}`:''}</small></div><div class="money">${brl(d.saldoCents)}</div></div>`).join('')}
@@ -531,6 +531,9 @@ function cardForm(c){const v=c||{};
 function faturaAsk(cardId,key){const c=S.cards.find(x=>x.id===cardId),val=occs(key).filter(o=>o.tx?.cartaoId===cardId&&!o.paid).reduce((a,o)=>a+o.cents,0);
   openDialog(mHead('Fatura '+esc(c?.nome||''))+`<div class="fm"><p class="fld w">Marcar como paga toda a fatura de ${mShort(key)}: <b>${brl(val)}</b>?</p><p class="fld w hint">Pagou só uma parte? O restante vira rotativo: cadastre esse valor em Dívidas com os juros da fatura.</p></div><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="fatura-ok" data-card="${cardId}" data-k="${key}">Paguei a fatura inteira</button></div>`)}
 
+function unpayAsk(cardId,key){const c=S.cards.find(x=>x.id===cardId),L=occs(key).filter(o=>o.tx?.cartaoId===cardId&&o.paid),val=L.reduce((a,o)=>a+o.cents,0);
+  openDialog(mHead('Fatura '+esc(c?.nome||''))+`<div class="fm"><p class="fld w">Desfazer o pagamento da fatura de ${mShort(key)}: <b>${brl(val)}</b>?</p><p class="fld w hint">A fatura volta a ficar em aberto e o valor volta para o Saldo atual. As compras não são apagadas.</p></div><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="unpay-ok" data-card="${cardId}" data-k="${key}">Desfazer pagamento</button></div>`)}
+async function unpayFatura(cardId,key){const list=occs(key).filter(o=>o.tx?.cartaoId===cardId&&o.paid);for(const o of list){await write(()=>store.patch('tx',o.tx.id,{pagos:{[key]:false}}))}toast('Pagamento da fatura desfeito')}
 /* ---------- eventos ---------- */
 document.addEventListener('click',async e=>{
   const go_=e.target.closest('[data-go]');if(go_){go(go_.dataset.go);return}
@@ -571,6 +574,8 @@ document.addEventListener('click',async e=>{
     case 'card-save':{const f=$('#cardform'),g=n=>f.elements[n].value.trim(),fe=+g('fecha'),ve=+g('venc'),er=$('#c_e');if(!g('nome')||!(fe>=1&&fe<=31)||!(ve>=1&&ve<=31)){er.textContent='Preencha nome, fechamento e vencimento (dias de 1 a 31).';er.hidden=false;break}const d={nome:g('nome'),titular:g('titular'),limiteCents:parseMoney(g('limite'))||0,fecha:fe,venc:ve};const i=id||uid();closeDialog();write(()=>store.put('cards',i,d),'Cartão salvo');break}
     case 'card-del':if(a.dataset.sure){const i=id;closeDialog();write(()=>store.del('cards',i),'Cartão excluído')}else{a.dataset.sure='1';a.textContent='Compras voltam para a data original. Confirmar'}break;
     case 'ask-fatura':faturaAsk(a.dataset.card,a.dataset.k);break;
+    case 'ask-unpay':unpayAsk(a.dataset.card,a.dataset.k);break;
+    case 'unpay-ok':{const c=a.dataset.card,k=a.dataset.k;closeDialog();unpayFatura(c,k);break}
     case 'fatura-ok':{const c=a.dataset.card,k=a.dataset.k;closeDialog();payFatura(c,k);break}
     case 'day':S.day=a.dataset.d;render(false);break;
   }});
@@ -651,6 +656,6 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
   if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
-    navigator.serviceWorker.register('sw.js?v=9',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
+    navigator.serviceWorker.register('sw.js?v=10',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();
