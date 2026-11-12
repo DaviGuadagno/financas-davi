@@ -1,4 +1,4 @@
-const APP_VER=11;
+const APP_VER=12;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -569,12 +569,12 @@ function impParse(txt){const out=[],bad=[];
     let meio='pix',cartaoId='';if(/credito|cartao/.test(forma)){meio='cartao';const nm=[...S.cards].sort((a,b)=>b.nome.length-a.nome.length).find(k=>forma.includes(impNorm(k.nome)));cartaoId=nm?nm.id:''}
     else if(/debito/.test(forma))meio='debito';else if(/dinheiro/.test(forma))meio='dinheiro';else if(/boleto/.test(forma))meio='boleto';
     let modo='avista',parcelaInicial=null,parcelas=null;const pm=tipoTx.match(/parcel\w*\s*(\d+)\s*\/\s*(\d+)/);if(pm){modo='parcelado';parcelaInicial=+pm[1];parcelas=+pm[2]}else if(/recorr/.test(tipoTx))modo='recorrente';
-    const r={n:n+1,desc,cents:Math.abs(c),data,meio,cartaoId,modo,parcelaInicial,parcelas,pago:meio==='cartao'?false:pago,tipo:c<0?'despesa':'receita',on:true};
+    const r={n:n+1,desc,cents:Math.abs(c),data,meio,cartaoId,modo,parcelaInicial,parcelas,pago:meio==='cartao'?false:pago,tipo:c<0?'despesa':'receita',on:true,catIn:(p[6]||'').trim()};
     const forced=IMP_RULES.find(x=>x[3]&&x[0].test(desc));if(forced)r.tipo=forced[3];
     out.push(r)});
   // pares que se anulam (mesma data, mesmo nome, valores opostos)
   out.forEach((r,i)=>{if(r.par!=null)return;const j=out.findIndex((x,k)=>k!==i&&x.par==null&&x.data===r.data&&x.cents===r.cents&&x.tipo!==r.tipo&&impNorm(x.desc)===impNorm(r.desc));if(j>=0){r.par=j;out[j].par=i}});
-  out.forEach(r=>{const k=impCat(r.desc,r.tipo);r.cat=k.cat;r.grupo=k.grupo});
+  out.forEach(r=>{const k=impCat(r.desc,r.tipo);r.cat=k.cat;r.grupo=k.grupo;if(r.catIn){const all=r.tipo==='receita'?[...CAT_R,...(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome)]:[...Object.values(CAT_D).flat(),...(S.cfg.cats||[]).filter(c=>c.grupo!=='receita').map(c=>c.nome)];const hit=all.find(x=>impNorm(x)===impNorm(r.catIn));r.cat=hit||r.catIn;if(!hit)r.grupo=r.tipo==='receita'?'receita':(k.cat===r.catIn?k.grupo:null)||'nao'}});
   impMatchAll(out);return{rows:out,bad}}
 function impFaturaTot(cardId,key){return occs(key).filter(o=>o.tx?.cartaoId===cardId)}
 const impWords=s=>impNorm(s).split(/[^a-z0-9]+/).filter(w=>w.length>=4);
@@ -585,11 +585,11 @@ function impMatchAll(rows){const cand=[];
     if(r.meio==='cartao')return;const W=impWords(r.desc);
     for(const kk of [k,addM(k,-1),addM(k,1)])for(const o of occs(kk)){if(o.debt||!o.tx||o.tx.cartaoId||o.tx.tipo!==r.tipo)continue;
       const dd=Math.abs((Date.parse(o.date)-Date.parse(r.data))/864e5),dv=Math.abs(o.cents-r.cents),sim=impWords(o.tx.descricao).some(w=>W.includes(w));
-      if(dd>5||dv>10||(dv>0&&!sim))continue;cand.push({ri,o,sc:(sim?0:1000)+dv*10+dd})}});
+      const vari=o.variavel&&sim;if(dd>(vari?10:5)||(!vari&&(dv>10||(dv>0&&!sim))))continue;cand.push({ri,o,sc:(sim?0:1000)+(vari?0:dv*10)+dd})}});
   cand.sort((a,b)=>a.sc-b.sc);const used=new Set();
   for(const c of cand){const r=rows[c.ri],id=c.o.tx.id+'|'+c.o.key;if(r.alvo||used.has(id))continue;used.add(id);
     r.alvo={id:c.o.tx.id,key:c.o.key,cents:c.o.cents,desc:c.o.tx.descricao};if(c.o.paid&&c.o.cents===r.cents){r.acao='ja';r.on=false}else r.acao='pagar'}}
-function impForm(){IMP=null;openDialog(mHead('Importar extrato')+`<div class="fm"><div class="fld w"><label for="imp_t">Cole as linhas do extrato</label><textarea id="imp_t" rows="9" style="width:100%;font:13px ui-monospace,monospace;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--glass-2);color:var(--fg)" placeholder="Mercado	-217,02	09/11/2026	Pix	À vista	Sim"></textarea><span class="hint">Uma linha por lançamento: Descrição · Valor (negativo = saída) · Data · Forma · Tipo · Pago? Pode copiar direto da planilha (colunas separadas por tab) ou separar com ; ou |.</span><span class="hint" id="imp_e" hidden style="color:var(--bad)"></span></div></div><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="imp-parse">Ver prévia</button></div>`)}
+function impForm(){IMP=null;openDialog(mHead('Importar extrato')+`<div class="fm"><div class="fld w"><label for="imp_t">Cole as linhas do extrato</label><textarea id="imp_t" rows="9" style="width:100%;font:13px ui-monospace,monospace;padding:10px;border-radius:12px;border:1px solid var(--line);background:var(--glass-2);color:var(--fg)" placeholder="Mercado	-217,02	09/11/2026	Pix	À vista	Sim"></textarea><span class="hint">Uma linha por lançamento: Descrição · Valor (negativo = saída) · Data · Forma · Tipo · Pago? · Categoria (opcional) Pode copiar direto da planilha (colunas separadas por tab) ou separar com ; ou |.</span><span class="hint" id="imp_e" hidden style="color:var(--bad)"></span></div></div><div class="mf"><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="imp-parse">Ver prévia</button></div>`)}
 const IMP_LAB={novo:['Novo',''],pagar:['Já no app · marcar pago','warn'],payfat:['Fatura no app · marcar paga','warn'],ja:['Já no app e pago','good'],anula:['Se anula com outra linha','']};
 function impCatSel(r,i){if(r.acao!=='novo')return '';const opts=r.tipo==='receita'?[...new Set([...CAT_R,...(S.cfg.cats||[]).filter(c=>c.grupo==='receita').map(c=>c.nome),r.cat])]:[...new Set([...Object.values(CAT_D).flat(),...(S.cfg.cats||[]).filter(c=>c.grupo!=='receita').map(c=>c.nome),r.cat])];
   return `<select data-imp-cat="${i}" style="margin-left:auto;max-width:170px;font-size:12px;padding:3px 6px;border-radius:8px;border:1px solid var(--line);background:var(--glass-2);color:var(--fg)" ${r.acao!=='novo'?'disabled':''}>${opts.sort((a,b)=>a.localeCompare(b,'pt')).map(c=>`<option ${c===r.cat?'selected':''}>${esc(c)}</option>`).join('')}</select>`}
@@ -742,6 +742,6 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
   if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
-    navigator.serviceWorker.register('sw.js?v=11',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
+    navigator.serviceWorker.register('sw.js?v=12',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();
