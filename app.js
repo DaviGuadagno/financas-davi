@@ -1,4 +1,4 @@
-const APP_VER=13;
+const APP_VER=14;
 
 /* ---------- utilidades ---------- */
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -80,12 +80,12 @@ const totalDebt=()=>S.debts.reduce((a,d)=>a+Math.max(0,d.saldoCents||0),0);
 function parcelasFuturas(){let t=0;for(const x of S.tx){if(x.tipo!=='despesa'||x.modo!=='parcelado')continue;for(const o of occsOf(x,'9999-12'))if(!o.paid)t+=o.cents}return t}
 function attention(){const lim=addDays(TODAY,7),items=[],cardsDone={};
   const keys=Object.keys(index().by).filter(k=>k<=lim.slice(0,7)).sort();
-  for(const o of occs(CUR))if(o.variavel&&!o.informado&&!o.paid)items.push({kind:'val',o,date:TODAY,cents:o.cents});
+  for(const o of occs(CUR))if(o.variavel&&!o.informado&&!o.paid)items.push({kind:'val',o,date:o.date,cents:o.cents});
   for(const k of keys)for(const o of occs(k)){if(o.paid||o.date>lim)continue;if(k===CUR&&o.variavel&&!o.informado)continue;
     if(o.tx?.cartaoId&&S.cards.some(c=>c.id===o.tx.cartaoId))continue;
     items.push({kind:o.debt?'debt':'tx',o,date:o.date,cents:o.cents})}
   for(const c of S.cards){const open=faturasAbertas(c.id),urg=open.filter(f=>f.date<=lim),use=urg.length?urg:open.slice(0,1);for(const f of use)items.push({kind:'fatura',card:c,key:f.key,date:f.date,cents:f.cents})}
-  items.sort((a,b)=>a.date.localeCompare(b.date));return items}
+  items.sort((a,b)=>a.date.localeCompare(b.date)||(a.kind==='fatura'?-1:0)-(b.kind==='fatura'?-1:0));return items}
 function faturasAbertas(cardId){const out=[];for(const k of Object.keys(index().by).sort()){let c=0,d=null;for(const o of occs(k))if(o.tx?.cartaoId===cardId&&!o.paid){c+=o.cents;d=o.date}if(c>0)out.push({key:k,date:d,cents:c})}return out}
 const urgentes=at=>at.filter(a=>a.date<=addDays(TODAY,7));
 
@@ -219,7 +219,7 @@ function pagePainel(){
       </div></section>
     <section class="card glass land"><div class="cardhead"><div><h2>Precisa de você</h2><small>Atrasos, faturas dos cartões e o que vence em 7 dias</small></div></div>
       ${s.out?`<div class="ms" style="margin-bottom:8px"><small>Pago em ${MES[+k.slice(5)-1]}</small><b>${brl(s.outPaid)} <span>de ${brl(s.out)}</span></b><div class="prog" style="margin-top:6px"><i style="width:${Math.min(100,s.outPaid/s.out*100)}%"></i></div></div>`:''}
-      <div>${at.length?[...at.filter(a=>a.kind==='fatura'),...at.filter(a=>a.kind!=='fatura').slice(0,5)].map(attItem).join(''):emptyBox('Tudo em dia','Quando algo vencer ou atrasar, aparece aqui com o botão de pagar.')}</div>
+      <div>${at.length?(()=>{const nf=at.filter(a=>a.kind!=='fatura').slice(0,5);return at.filter(a=>a.kind==='fatura'||nf.includes(a))})().map(attItem).join(''):emptyBox('Tudo em dia','Quando algo vencer ou atrasar, aparece aqui com o botão de pagar.')}</div>
       ${at.filter(a=>a.kind!=='fatura').length>5?`<button class="btn sm" data-go="proximos-meses" style="margin-top:8px">Ver mais ${at.filter(a=>a.kind!=='fatura').length-5}</button>`:''}</section>
   </div>
   ${faturasSection()}
@@ -745,6 +745,6 @@ document.addEventListener('click',e=>{const a=e.target.closest('[data-act2]');if
   const h=location.hash.slice(1);if(PAGES.some(x=>x[0]===h))S.page=h;
   if('serviceWorker' in navigator){let recarregou=false;const tinha=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!tinha||recarregou)return;recarregou=true;location.reload()});
-    navigator.serviceWorker.register('sw.js?v=13',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
+    navigator.serviceWorker.register('sw.js?v=14',{updateViaCache:'none'}).then(r=>{const up=()=>r.update().catch(()=>{});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')up()});setInterval(up,30*60*1000)}).catch(e=>console.warn(e))}
   F_.onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){enter(u)}else{entered=false;showGate(true);drawGate()}});
 })();
